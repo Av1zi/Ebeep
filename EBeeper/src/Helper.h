@@ -36,10 +36,6 @@ void drawBitmap(int x, int y, const uint8_t* bitmap) {
   display.drawBitmap(x, y, bitmap, 296, 128, GxEPD_BLACK);
 }
 
-void beginDraw() {
-  display.setFullWindow();
-  display.firstPage();
-}
 
 bool endDraw() {
   return display.nextPage();
