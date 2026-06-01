@@ -1,42 +1,44 @@
-#include <SPI.h>
-#include <GxEPD2_BW.h>
-#include <Fonts/FreeMonoBold12pt7b.h>
+#include <Arduino.h>
+#include "helper.h"
 
-#define EPD_CS    10
-#define EPD_DC    9
-#define EPD_RST   8
-#define EPD_BUSY  7
+// =====================
+// YOUR SCREEN HERE
+// =====================
+void drawMyScreen() {
+  beginDraw();
+  do {
+    // Draw text
+    drawText(10, 30, "Hello!");
+    //drawText(10, 60, "It works!", &FreeMonoBold9pt7b);
 
-GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display(
-  GxEPD2_290_BS(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
-);
+    // Draw shapes
+    //display.fillCircle(250, 64, 30, GxEPD_BLACK);
+    //display.drawRect(5, 5, 100, 40, GxEPD_BLACK);
 
+    // Draw heart bitmap
+    //drawBitmap(0, 0, AVIZI_bitmap);
+
+  } while (endDraw());
+}
+
+// =====================
+// SETUP
+// =====================
 void setup() {
   Serial.begin(9600);
-  while (!Serial) { delay(10); }
-  Serial.println("Starting...");
+  while (!Serial) delay(10);
 
   SPI.begin();
-  display.init(9600, true, 10, false);
-  display.setRotation(1);
+  display.init(9600, true, 50, false);
+  display.setRotation(1); // landscape
+  display.clearScreen();
 
-  // Flush with black first to sharpen pixels
-  display.setFullWindow();
-  display.firstPage();
-  delay(2000);
-
-  // Now draw the actual content
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setFont(&FreeMonoBold12pt7b);
-    display.setTextColor(GxEPD_BLACK);
-    display.setCursor(50, 30);
-    display.print("Hello! It works!");
-  } while (display.nextPage());
+  drawMyScreen();
 
   display.hibernate();
   Serial.println("Done.");
 }
 
-void loop() {}
+void loop() {
+  // Empty loop
+}
