@@ -73,4 +73,4 @@ Messages are typed using a 3-button scrollable alphabet:
 
 ## License
 
-MIT — do whatever you want with it, just don't sell it to your girlfriend as your own idea.
+GPL-3.0 license — do whatever you want with it, just make sure its open source as well.
