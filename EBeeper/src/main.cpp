@@ -97,8 +97,8 @@ void drawMyScreen() {
     if (!fastUpdate) {
       drawText(10, 20, "LoveBox", &FreeMonoBold9pt7b);
       drawText(210, 20, "[98%]", &FreeMonoBold9pt7b);
-      display.drawFastHLine(0, 26, 296, GxEPD_BLACK);
     }
+    display.drawFastHLine(0, 26, 296, GxEPD_BLACK);
 
     // 2. DYNAMIC BOTTOM NAVIGATION MENU GUIDES
     display.drawFastHLine(0, 102, 296, GxEPD_BLACK);
