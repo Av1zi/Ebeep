@@ -1,16 +1,23 @@
 #include <Arduino.h>
-#include "Helper.h"
+#include <SPI.h>
+#include <GxEPD2_BW.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
+#include <Fonts/FreeMonoBold12pt7b.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
 
-// =====================
-// HARDWARE PIN CONFIG
-// =====================
-#define BTN_LEFT    2
-#define BTN_SELECT  3
-#define BTN_RIGHT   4
+#include "config.h"
 
-// =====================
-// STATE MACHINE CORE DEFINITIONS
-// =====================
+// ═══════════════════════════════════════════════════════════════
+//  DISPLAY DRIVER
+//  Library: https://github.com/ZinggJM/GxEPD2
+// ═══════════════════════════════════════════════════════════════
+GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display(
+  GxEPD2_290_BS(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
+);
+
+// ═══════════════════════════════════════════════════════════════
+//  SCREEN STATE MACHINE
+// ═══════════════════════════════════════════════════════════════
 enum ScreenState {
   STATE_HOME,
   STATE_INBOX,
@@ -20,89 +27,109 @@ enum ScreenState {
 };
 
 ScreenState currentState = STATE_HOME;
+
+// ── Refresh flags ─────────────────────────────────────────────
+//  needRefresh  — set to true whenever the screen needs redrawn
+//  fastUpdate   — set to true for partial refresh (content area only)
+//                 false = full screen refresh (used on state changes)
 bool needRefresh = false;
-bool fastUpdate = false; // Tracks if we are doing a fast, partial refresh
-bool hasUnreadMessage = true;
+bool fastUpdate  = false;
 
-const char alphabet[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ.!?<3";
-const int alphabetSize = sizeof(alphabet) - 1;
-int currentLetterIdx = 0;
+// ── Message state ─────────────────────────────────────────────
+bool hasUnreadMessage = false;
+char lastReceivedMessage[MAX_MSG_LEN + 1] = "";  // set by MQTT callback
+char typedMessage[MAX_MSG_LEN + 1]        = "";
+int  messageLen       = 0;
+int  currentLetterIdx = 0;
 
-char typedMessage[32] = "";
-int messageLen = 0;
-char lastReceivedMessage[32] = "I MISS YOU! <3";
+// ── Timers ────────────────────────────────────────────────────
+unsigned long sentEnteredAt = 0;  // millis() when STATE_SENT was entered
 
-bool lastLeftState   = HIGH;
-bool lastSelectState = HIGH;
-bool lastRightState  = HIGH;
+// ── Compose sub-state ─────────────────────────────────────────
+// Set to true when DEL is pressed on an empty message.
+// Triggers a "Quit composing?" popup overlay inside drawCompose().
+bool confirmLeaveCompose = false;
 
-// =====================
-// CODE INJECTION POINTS
-// =====================
+// ── Battery ───────────────────────────────────────────────────
+//  TODO (ESP32): Read real voltage from a resistor-divider on an ADC pin.
+//  Formula: batteryPct = (vBatt - 3.0) / (4.2 - 3.0) * 100, clamped 0–100.
+int batteryPct = 62;  // placeholder
+
+// ── Button state tracking ─────────────────────────────────────
+bool lastLeft   = HIGH;
+bool lastMid    = HIGH;
+bool lastRight  = HIGH;
+
+// ═══════════════════════════════════════════════════════════════
+//  CODE INJECTION
+// ═══════════════════════════════════════════════════════════════
+#include "display_utils.h"   // drawText, drawCenteredText, drawStatusBar, drawButtonHints
+#include "icons.h"           // drawIconEnvelope, drawIconCompose, drawIconGamepad
 #include "HomeState.h"
 #include "InboxState.h"
-#include "ComposeState.h"
+#include "ComposeState.h"    // also defines ALPHABET[], ALPHABET_SIZE, DEL_IDX
 #include "SentState.h"
 #include "GamesState.h"
 
-// =====================
-// INPUT HANDLER DEBOUNCING
-// =====================
+// ═══════════════════════════════════════════════════════════════
+//  BUTTON READING
+// ═══════════════════════════════════════════════════════════════
 void checkButtons() {
-  bool currentLeft   = digitalRead(BTN_LEFT);
-  bool currentSelect = digitalRead(BTN_SELECT);
-  bool currentRight  = digitalRead(BTN_RIGHT);
+  bool curLeft  = digitalRead(BTN_LEFT);
+  bool curMid   = digitalRead(BTN_SELECT);
+  bool curRight = digitalRead(BTN_RIGHT);
 
-  bool leftPressed   = (currentLeft == LOW && lastLeftState == HIGH);
-  bool selectPressed = (currentSelect == LOW && lastSelectState == HIGH);
-  bool rightPressed  = (currentRight == LOW && lastRightState == HIGH);
+  // Edge detection: only fire on the transition HIGH→LOW (button just pressed)
+  bool leftPressed  = (curLeft  == LOW && lastLeft  == HIGH);
+  bool midPressed   = (curMid   == LOW && lastMid   == HIGH);
+  bool rightPressed = (curRight == LOW && lastRight == HIGH);
 
-  if (leftPressed || selectPressed || rightPressed) {
-    delay(50); // Simple hardware filter debounce
-    
+  if (leftPressed || midPressed || rightPressed) {
+    delay(DEBOUNCE_MS);  // simple debounce — good enough for e-ink response times
+
     switch (currentState) {
-      case STATE_HOME:    handleHomeInput(leftPressed, selectPressed, rightPressed);    break;
-      case STATE_INBOX:   handleInboxInput(leftPressed, selectPressed, rightPressed);   break;
-      case STATE_COMPOSE: handleComposeInput(leftPressed, selectPressed, rightPressed); break;
-      case STATE_GAMES:   handleGamesInput(leftPressed, selectPressed, rightPressed);   break;
-      default: break;
+      case STATE_HOME:    handleHomeInput   (leftPressed, midPressed, rightPressed); break;
+      case STATE_INBOX:   handleInboxInput  (leftPressed, midPressed, rightPressed); break;
+      case STATE_COMPOSE: handleComposeInput(leftPressed, midPressed, rightPressed); break;
+      case STATE_SENT:    handleSentInput   (leftPressed, midPressed, rightPressed); break;
+      case STATE_GAMES:   handleGamesInput  (leftPressed, midPressed, rightPressed); break;
     }
   }
 
-  lastLeftState   = currentLeft;
-  lastSelectState = currentSelect;
-  lastRightState  = currentRight;
+  lastLeft  = curLeft;
+  lastMid   = curMid;
+  lastRight = curRight;
 }
 
-// =====================
-// MAIN SCREEN CONTROLLER
-// =====================
-void drawMyScreen() {  
+// ═══════════════════════════════════════════════════════════════
+//  DISPLAY REFRESH
+// ═══════════════════════════════════════════════════════════════
+void refreshDisplay() {
   if (fastUpdate) {
-    // ONLY update the region below the static top bar!
-    // Screen is 296x128. Top bar is 27 pixels tall. 
-    display.setPartialWindow(0, 27, 296, 101);
+    // ── Partial refresh ─────────────────────────────────────
+    // Only updates pixels below the status bar.
+    // The status bar (y=0..22) stays untouched on screen — no flicker!
+    // Used during letter scrolling in Compose for a snappier feel.
+    display.setPartialWindow(0, CONTENT_Y+2, SCREEN_W, SCREEN_H - CONTENT_Y);
   } else {
-    // Full screen update to clear ghosting when switching major menus
+    // ── Full refresh ────────────────────────────────────────
+    // Clears the whole screen and redraws everything including the status bar.
+    // Use this on every state transition.
     display.setFullWindow();
   }
 
   display.firstPage();
   do {
-    // fillScreen only clears the area inside the active window!
-    display.fillScreen(GxEPD_WHITE); 
+    display.fillScreen(GxEPD_WHITE);
 
-    // GLOBAL STATUS BAR
-    // We ONLY draw this if we are doing a full screen update.
+    // Status bar is drawn only on full refreshes.
+    // On partial updates it's outside the active window, so it stays as-is.
     if (!fastUpdate) {
-      drawText(10, 20, "LoveBox", &FreeMonoBold9pt7b);
-      drawText(210, 20, "[98%]", &FreeMonoBold9pt7b);
+      drawStatusBar(batteryPct);
     }
-    display.drawFastHLine(0, 26, 296, GxEPD_BLACK);
 
-    // 2. DYNAMIC BOTTOM NAVIGATION MENU GUIDES
-    display.drawFastHLine(0, 102, 296, GxEPD_BLACK);
-    
+    // State-specific content.
+    // Each draw function is responsible for calling drawButtonHints().
     switch (currentState) {
       case STATE_HOME:    drawHome();    break;
       case STATE_INBOX:   drawInbox();   break;
@@ -111,39 +138,72 @@ void drawMyScreen() {
       case STATE_GAMES:   drawGames();   break;
     }
 
-  } while (display.nextPage()); // We also bypass endDraw() here
+  } while (display.nextPage());
+
+  fastUpdate = false;  // reset — next refresh defaults to full unless explicitly set
 }
 
-// =====================
-// ARDUINO SETUP & LOOP
-// =====================
-void setup() {
-  Serial.begin(9600);
-  
-  pinMode(BTN_LEFT, INPUT_PULLUP);
-  pinMode(BTN_SELECT, INPUT_PULLUP);
-  pinMode(BTN_RIGHT, INPUT_PULLUP);
+// ═══════════════════════════════════════════════════════════════
+//  MQTT STUB
+//  TODO: Replace this whole section with real WiFi + MQTT code.
+//
+//  When porting to ESP32C3, add:
+//    #include <WiFi.h>
+//    #include <PubSubClient.h>
+//
+//  Callback structure:
+//    void onMessageReceived(char* topic, byte* payload, unsigned int length) {
+//      strncpy(lastReceivedMessage, (char*)payload, MAX_MSG_LEN);
+//      lastReceivedMessage[MAX_MSG_LEN] = '\0';
+//      hasUnreadMessage = true;
+//      currentState     = STATE_INBOX;
+//      needRefresh      = true;
+//      fastUpdate       = false;
+//      // TODO: trigger buzzer melody here
+//    }
+// ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+//  SETUP
+// ═══════════════════════════════════════════════════════════════
+void setup() {
+  Serial.begin(115200);
+
+  // Buttons
+  pinMode(BTN_LEFT,   INPUT_PULLUP);
+  pinMode(BTN_SELECT, INPUT_PULLUP);
+  pinMode(BTN_RIGHT,  INPUT_PULLUP);
+
+  // Display init
   SPI.begin();
-  display.init(9600, true, 50, false);
-  display.setRotation(1);
+  display.init(115200, true, 50, false);
+  display.setRotation(1);   // landscape
   display.clearScreen();
 
-  drawMyScreen(); 
+  // Initial draw
+  refreshDisplay();
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  LOOP
+// ═══════════════════════════════════════════════════════════════
 void loop() {
+  // 1. Read buttons
   checkButtons();
 
-  if (needRefresh) {
-    drawMyScreen();
-    needRefresh = false;
-    fastUpdate = false; // Always revert to full, clean refresh by default
+  // 2. Auto-dismiss Sent screen after the timer expires
+  if (currentState == STATE_SENT && (millis() - sentEnteredAt >= SENT_DISPLAY_MS)) {
+    currentState = STATE_HOME;
+    needRefresh  = true;
+    fastUpdate   = false;
   }
 
-  if (currentState == STATE_SENT) {
-    delay(3000); 
-    currentState = STATE_HOME;
-    needRefresh = true;
+  // 3. Redraw if anything changed
+  if (needRefresh) {
+    refreshDisplay();
+    needRefresh = false;
   }
+
+  // 4. TODO (ESP32): Call mqttClient.loop() here to receive incoming messages.
+  //    mqttClient.loop();
 }
