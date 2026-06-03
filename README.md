@@ -53,8 +53,7 @@ Messages are typed using a 3-button scrollable alphabet:
 
 ## Project Status
 
-- [x] Mockup version for the UI (kidna done)
-- [ ] Hardware architecture finalized
+- [x] Mockup version for the UI (finishing touches)
 - [ ] Wiring design complete
 - [ ] MQTT publish/subscribe
 - [ ] WiFiManager captive portal integration
