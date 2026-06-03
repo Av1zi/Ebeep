@@ -14,13 +14,12 @@ The devices communicate over WiFi via MQTT, meaning they work across any distanc
 
 ## Features
 
-- 📨 **Send & receive messages** — type freehand using a 3-button scrollable alphabet interface
-- 🔔 **Buzzer notification** — plays a melody when a new message arrives
-- 🔋 **Battery powered** — LiPo battery with charging over USB-C, battery % always visible on screen
-- 🌍 **Works across countries** — communicates over WiFi via MQTT (HiveMQ Cloud free tier)
-- 🖥️ **E-ink display** — always-on, no burn-in, ultra low power draw
-- 📶 **Easy WiFi setup** — captive portal on first boot, no hardcoded credentials
-- 🎮 **Expandable** — a Games slot is reserved in the UI for future additions
+-  **Send & receive messages** — type freehand using a 3-button scrollable alphabet interface
+-  **Buzzer notification** — plays a melody when a new message arrives
+-  **Battery powered** — LiPo battery with charging over USB-C, battery % always visible on screen
+-  **Works across countries** — communicates over WiFi via MQTT (HiveMQ Cloud free tier)
+-  **E-ink display** — for always on display and for ultra low power draw
+-  **Expandable** — a Games slot is reserved in the UI for future additions
 
 ---
 
@@ -29,10 +28,9 @@ The devices communicate over WiFi via MQTT, meaning they work across any distanc
 | Component | Part |
 |---|---|
 | Microcontroller | ESP32 |
-| Display | Waveshare e-ink (1.54" or 2.13") |
-| Battery | 3.7V LiPo, 1000–2000mAh |
-| Charging | TP4056 USB-C module |
-| Buttons | 3× mechanical keyboard switches |
+| Display | Waveshare e-ink (2.9") |
+| Battery | 3.7V LiPo, 3000mAh |
+| Buttons | 3× low profile mechanical keyboard switches |
 | Buzzer | Passive piezo buzzer |
 
 ---
@@ -40,49 +38,28 @@ The devices communicate over WiFi via MQTT, meaning they work across any distanc
 ## How It Works
 
 ### Communication
-Both devices connect to WiFi and talk to a private **MQTT broker** (HiveMQ Cloud, free tier). Each device subscribes to its own topic and publishes to the other's. Messages are JSON payloads containing the text and sender ID.
+Both devices connect to WiFi and talk to a private **MQTT broker**. Each device subscribes to its own topic and publishes to the other's. Messages are JSON payloads containing the text and sender ID.
 
 ### WiFi Setup (captive portal)
 On first boot, the device creates a hotspot called `Ebeep-Setup`. Connect to it from any phone and a setup page appears automatically — pick your WiFi network, enter the password, done. Credentials are saved to flash and the device never asks again.
 
 ### Typing Interface
 Messages are typed using a 3-button scrollable alphabet:
-- **Left / Right** — scroll through characters (`_ E T A O I N S H R ...`)
+- **Left / Right** — scroll through characters (`_ A B C D E F G H I ...`)
 - **Confirm** — select the current character
 - **Two spaces in a row** — sends the message
-
-The alphabet is ordered by frequency (not A–Z) so common letters are reached faster. A toolbar above the buttons always shows what each button does in the current context.
-
-### Screen States
-
-```
-HOME
-├── [Inbox]      ← shows dot if unread message waiting
-├── [Compose]    ← opens typing interface  
-└── [Games]      ← reserved, empty for now
-
-COMPOSE
-└── Scroll alphabet → confirm characters → double-space to send
-
-SENT
-└── "Sent 💌" confirmation → auto-returns to home
-
-INCOMING MESSAGE
-└── Full-screen message display + buzzer melody
-    └── Option to reply directly
-```
 
 ---
 
 ## Project Status
 
-- [x] Hardware architecture finalized
-- [x] Wiring design complete
-- [ ] Arduino code — display & button test
+- [x] Mockup version for the UI (kidna done)
+- [ ] Hardware architecture finalized
+- [ ] Wiring design complete
 - [ ] MQTT publish/subscribe
 - [ ] WiFiManager captive portal integration
-- [ ] Typing UI with scrollable alphabet
-- [ ] Full screen state machine
+- [X] Typing UI with scrollable alphabet
+- [x] Full screen state machine
 - [ ] Buzzer melodies
 - [ ] Enclosure / physical build
 
@@ -90,10 +67,10 @@ INCOMING MESSAGE
 
 ## Why "Ebeep"?
 
-**E** for e-ink. **Beep** for the little buzz it makes when someone is thinking of you.
+**E** for e-ink. **Beep** for the little buzz it makes when someone is thinking of you (also for beeper).
 
 ---
 
 ## License
 
-MIT — do whatever you want with it, just don't sell it to your girlfriend as your own idea.
+GPL-3.0 license — do whatever you want with it, just make sure its open source as well.
