@@ -1,5 +1,8 @@
 #pragma once
 
+#include <secret.h>  // WiFi credentials and MQTT server details (not checked into version control)
+
+
 // ═══════════════════════════════════════════════════════════════
 //  EBEEP — config.h
 //  All hardware pins and layout constants live here.
@@ -16,7 +19,7 @@
 //    Arduino  9        ──→ DC
 //    Arduino  8        ──→ RST
 //    Arduino  7        ──→ BUSY
-//    3.3V              ──→ VCC   ← IMPORTANT: 3.3V not 5V!
+//    3.3V              ──→ VCC
 //    GND               ──→ GND
 //
 #define EPD_CS    10
@@ -35,14 +38,14 @@
 
 // ── Vertical Layout ───────────────────────────────────────────
 //
-//   y=  0 ╔══════════════════════════════════════════════════╗
-//          ║  Ebeep                        72%  [████░]     ║
+//   y=  0  ╔══════════════════════════════════════════════════╗
+//          ║  Ebeep                        72%  [████░]       ║
 //   y= 22  ╠══════════════════════════════════════════════════╣
 //   y= 23  ║                                                  ║
-//          ║                 CONTENT AREA          (85px)    ║
+//          ║                 CONTENT AREA          (85px)     ║
 //   y=107  ║                                                  ║
 //   y=108  ╠══════════════════════════════════════════════════╣
-//   y=109  ║   [ Left ]          [ Mid ]          [ Right ]  ║  (19px)
+//   y=109  ║   [ Left ]          [ Mid ]          [ Right ]   ║  (19px)
 //   y=127  ╚══════════════════════════════════════════════════╝
 
 #define DIVIDER_TOP    22
@@ -61,9 +64,7 @@
 #define COL3_CX      (COL_SPLIT2 + (SCREEN_W - COL_SPLIT2) / 2)
 
 // ── Home Screen Tile Layout ───────────────────────────────────
-//  Smaller tiles with breathing room, centered in the content area.
 //  Tile size: 78x60.  Gap between tiles: 16px.  Side margins: 15px.
-//  Check: 15 + 78 + 16 + 78 + 16 + 78 + 15 = 296 ✓
 #define TILE_W    78
 #define TILE_H    60
 #define TILE_Y    ((CONTENT_Y) + ((CONTENT_H) - (TILE_H)) / 2)  // vertically centered = 35
@@ -75,3 +76,13 @@
 #define MAX_MSG_LEN      30
 #define SENT_DISPLAY_MS  3000UL
 #define DEBOUNCE_MS      50
+
+// ── WiFi Settings ─────────────────────────────────────────────
+char ssid[] = WIFI_SSID;        // your network SSID (name)
+char pass[] = WIFI_PASSWORD; 
+
+// ── MQTT Settings ─────────────────────────────────────────────
+//#define MQTT_SERVER     "mqtt.example.com"
+//#define MQTT_PORT       1883
+//#define MQTT_TOPIC_SUB  "ebeep/inbox"
+//#define MQTT_TOPIC_PUB  "ebeep/outbox"

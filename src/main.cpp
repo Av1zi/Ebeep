@@ -5,6 +5,9 @@
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 
+#include <WiFi.h>
+//#include <WiFiManager.h> add this later on when you move to esp32 right now use the normal wifi library and hardcode the credentials
+
 #include "config.h"
 
 // ═══════════════════════════════════════════════════════════════
@@ -23,10 +26,11 @@ enum ScreenState {
   STATE_INBOX,
   STATE_COMPOSE,
   STATE_SENT,
-  STATE_GAMES
+  STATE_GAMES,
+  STATE_WIFI
 };
 
-ScreenState currentState = STATE_HOME;
+ScreenState currentState = STATE_WIFI;
 
 // ── Refresh flags ─────────────────────────────────────────────
 //  needRefresh  — set to true whenever the screen needs redrawn
@@ -70,6 +74,8 @@ bool lastRight  = HIGH;
 #include "ComposeState.h"    // also defines ALPHABET[], ALPHABET_SIZE, DEL_IDX
 #include "SentState.h"
 #include "GamesState.h"
+#include "wifiState.h"
+
 
 // ═══════════════════════════════════════════════════════════════
 //  BUTTON READING
@@ -136,6 +142,7 @@ void refreshDisplay() {
       case STATE_COMPOSE: drawCompose(); break;
       case STATE_SENT:    drawSent();    break;
       case STATE_GAMES:   drawGames();   break;
+      case STATE_WIFI:    drawWifi();    break;
     }
 
   } while (display.nextPage());
@@ -147,8 +154,7 @@ void refreshDisplay() {
 //  MQTT STUB
 //  TODO: Replace this whole section with real WiFi + MQTT code.
 //
-//  When porting to ESP32C3, add:
-//    #include <WiFi.h>
+// 
 //    #include <PubSubClient.h>
 //
 //  Callback structure:
@@ -159,6 +165,7 @@ void refreshDisplay() {
 //      currentState     = STATE_INBOX;
 //      needRefresh      = true;
 //      fastUpdate       = false;
+
 //      // TODO: trigger buzzer melody here
 //    }
 // ═══════════════════════════════════════════════════════════════
@@ -168,7 +175,6 @@ void refreshDisplay() {
 // ═══════════════════════════════════════════════════════════════
 void setup() {
   Serial.begin(115200);
-
   // Buttons
   pinMode(BTN_LEFT,   INPUT_PULLUP);
   pinMode(BTN_SELECT, INPUT_PULLUP);
@@ -182,6 +188,30 @@ void setup() {
 
   // Initial draw
   refreshDisplay();
+
+  // temporary wifi
+  int status = WL_IDLE_STATUS;
+
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    while (true);
+  }
+  
+    while (status != WL_CONNECTED) {
+    Serial.print("Attempting to connect to WPA SSID: ");
+    Serial.println(ssid);
+    status = WiFi.begin(ssid, pass);
+
+    // wait 3 sec
+    delay(1000);
+  }
+  refreshDisplay();
+  delay(3000);
+
+  currentState = STATE_HOME;
+  needRefresh = true;
+  Serial.print("You're connected to the network");
+
 }
 
 // ═══════════════════════════════════════════════════════════════
