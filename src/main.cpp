@@ -7,6 +7,13 @@
 
 #include <WiFi.h>
 //#include <WiFiManager.h> add this later on when you move to esp32 right now use the normal wifi library and hardcode the credentials
+//#include <WiFiClientSecure.h> for esp23
+//#include <PubSubClient.h>
+
+
+//WiFiSSLClient wifiClient;
+//PubSubClient mqttClient(wifiClient);
+
 
 #include "config.h"
 
@@ -59,6 +66,7 @@ bool confirmLeaveCompose = false;
 //  Formula: batteryPct = (vBatt - 3.0) / (4.2 - 3.0) * 100, clamped 0–100.
 int batteryPct = 62;  // placeholder
 
+
 // ── Button state tracking ─────────────────────────────────────
 bool lastLeft   = HIGH;
 bool lastMid    = HIGH;
@@ -107,6 +115,7 @@ void checkButtons() {
   lastRight = curRight;
 }
 
+
 // ═══════════════════════════════════════════════════════════════
 //  DISPLAY REFRESH
 // ═══════════════════════════════════════════════════════════════
@@ -153,22 +162,21 @@ void refreshDisplay() {
 // ═══════════════════════════════════════════════════════════════
 //  MQTT STUB
 //  TODO: Replace this whole section with real WiFi + MQTT code.
-//
-// 
-//    #include <PubSubClient.h>
-//
-//  Callback structure:
-//    void onMessageReceived(char* topic, byte* payload, unsigned int length) {
-//      strncpy(lastReceivedMessage, (char*)payload, MAX_MSG_LEN);
-//      lastReceivedMessage[MAX_MSG_LEN] = '\0';
-//      hasUnreadMessage = true;
-//      currentState     = STATE_INBOX;
-//      needRefresh      = true;
-//      fastUpdate       = false;
-
-//      // TODO: trigger buzzer melody here
-//    }
 // ═══════════════════════════════════════════════════════════════
+
+
+  // void onMessageReceived(char* topic, byte* payload, unsigned int length) {
+  //   strncpy(lastReceivedMessage, (char*)payload, MAX_MSG_LEN);
+  //   lastReceivedMessage[MAX_MSG_LEN] = '\0';
+  //   hasUnreadMessage = true;
+  //   currentState     = STATE_INBOX;
+  //   needRefresh      = true;
+  //   fastUpdate       = true;
+
+  //   // TODO: trigger buzzer melody here
+  // }
+
+
 
 // ═══════════════════════════════════════════════════════════════
 //  SETUP
@@ -183,35 +191,49 @@ void setup() {
   // Display init
   SPI.begin();
   display.init(115200, true, 50, false);
-  display.setRotation(1);   // landscape
+  display.setRotation(1);
   display.clearScreen();
 
-  // Initial draw
-  refreshDisplay();
 
-  // temporary wifi
-  int status = WL_IDLE_STATUS;
+  // // skip wifi for now
+  // currentState = STATE_WIFI;
+  // refreshDisplay();
 
-  if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println("Communication with WiFi module failed!");
-    while (true);
-  }
-  
-    while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to WPA SSID: ");
-    Serial.println(ssid);
-    status = WiFi.begin(ssid, pass);
+  // // Connect WiFi
+  // WiFi.begin(ssid, pass);
+  // Serial.print("Connecting to WiFi...");
+  // while (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) {
+  //   delay(500);
+  //   Serial.print(".");
+  // }
+  // Serial.println(" connected!");  
 
-    // wait 3 sec
-    delay(1000);
-  }
-  refreshDisplay();
-  delay(3000);
+
+// Setup MQTT over TLS FOR ESP32
+// -------------------------
+// wifiClient.setInsecure(); esp32 only
+// mqttClient.setServer(mqttServer, mqttPort);
+// mqttClient.setCallback(onMessageReceived);
+// while (!mqttClient.connected()) {
+//     Serial.print("Connecting to MQTT... server: ");
+//     Serial.print(mqttServer);
+//     Serial.print(" port: ");
+//     Serial.println(mqttPort);
+    
+//     if (mqttClient.connect("Ebeep_Device", mqttUser, mqttPass)) {
+//         Serial.println("connected!");
+//         mqttClient.subscribe(mqttInboxTopic);
+//     } else {
+//         Serial.print("failed, rc=");
+//         Serial.print(mqttClient.state());
+//         Serial.println(" — retrying in 2s");
+//         delay(2000);
+//     }
+// }
+//mqttClient.publish(mqttOutboxTopic, "Hello from Ebeep!"); TEST CODE NOT RELEVENT
 
   currentState = STATE_HOME;
   needRefresh = true;
-  Serial.print("You're connected to the network");
-
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -234,6 +256,6 @@ void loop() {
     needRefresh = false;
   }
 
-  // 4. TODO (ESP32): Call mqttClient.loop() here to receive incoming messages.
-  //    mqttClient.loop();
+  //Call mqttClient.loop() here to receive incoming messages.
+  // mqttClient.loop();
 }

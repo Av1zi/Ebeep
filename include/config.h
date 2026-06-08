@@ -78,11 +78,21 @@
 #define DEBOUNCE_MS      50
 
 // ── WiFi Settings ─────────────────────────────────────────────
+// credentials are stored in secret.h (not checked into version control for security)
 char ssid[] = WIFI_SSID;        // your network SSID (name)
-char pass[] = WIFI_PASSWORD; 
+char pass[] = WIFI_PASSWORD;
 
 // ── MQTT Settings ─────────────────────────────────────────────
-//#define MQTT_SERVER     "mqtt.example.com"
-//#define MQTT_PORT       1883
-//#define MQTT_TOPIC_SUB  "ebeep/inbox"
-//#define MQTT_TOPIC_PUB  "ebeep/outbox"
+// credentials are stored in secret.h (not checked into version control for security)
+
+#define MQTT_TOPIC_SUB  "ebeep/inbox"
+#define MQTT_TOPIC_PUB  "ebeep/outbox"
+
+char mqttServer[] = MQTT_SERVER;
+uint16_t mqttPort = MQTT_PORT;
+
+char mqttInboxTopic[] = "Beeper_1";
+char mqttOutboxTopic[] = "Beeper_2";
+
+char mqttUser[] = MQTT_USERNAME;
+char mqttPass[] = MQTT_PASSWORD;
