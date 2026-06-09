@@ -1,6 +1,6 @@
-# Ebeep 💌
+# Ebeep
 
-> A pair of handmade wireless devices that let two people send love notes to each other across any distance — no phone required.
+> A pair of handmade wireless devices that let two people send notes to each other across any distance, no phone required!*
 
 ---
 
