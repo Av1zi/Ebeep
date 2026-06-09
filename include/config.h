@@ -11,26 +11,32 @@
 
 // ── E-Ink Display SPI Pins ────────────────────────────────────
 //
-//  Arduino R4 → E-Ink display wiring:
+//  XIAO ESP32C6 → WeAct E-Paper 2.9" display wiring:
 //
-//    Arduino 11 (MOSI) ──→ DIN
-//    Arduino 13 (SCK)  ──→ CLK
-//    Arduino 10        ──→ CS
-//    Arduino  9        ──→ DC
-//    Arduino  8        ──→ RST
-//    Arduino  7        ──→ BUSY
-//    3.3V              ──→ VCC
-//    GND               ──→ GND
+//    XIAO D10 (MOSI) ──→ SDA / DIN
+//    XIAO D8  (SCK)  ──→ SCL / CLK
+//    XIAO D7         ──→ CS
+//    XIAO D6         ──→ DC
+//    XIAO D5         ──→ RST
+//    XIAO D4         ──→ BUSY
+//    3.3V            ──→ VCC
+//    GND             ──→ GND
 //
-#define EPD_CS    10
-#define EPD_DC     9
-#define EPD_RST    8
-#define EPD_BUSY   7
+#define EPD_CS    D7
+#define EPD_DC    D6
+#define EPD_RST   D5
+#define EPD_BUSY  D4
 
 // ── Button Pins ───────────────────────────────────────────────
-#define BTN_LEFT    2
-#define BTN_SELECT  3
-#define BTN_RIGHT   4
+// Note: D2 (GPIO4) and D3 (GPIO5) are strapping pins. 
+// Avoid holding these down while booting or hitting reset.
+#define BTN_LEFT    D1
+#define BTN_SELECT  D2
+#define BTN_RIGHT   D3
+
+// ── Analog Battery Pin ────────────────────────────────────────
+//#define BATT_PIN    D0
+// ADD THIS WHEN CONNECTING BATTERY
 
 // ── Display Dimensions (2.9", landscape) ─────────────────────
 #define SCREEN_W  296
@@ -85,14 +91,14 @@ char pass[] = WIFI_PASSWORD;
 // ── MQTT Settings ─────────────────────────────────────────────
 // credentials are stored in secret.h (not checked into version control for security)
 
-#define MQTT_TOPIC_SUB  "ebeep/inbox"
-#define MQTT_TOPIC_PUB  "ebeep/outbox"
+// #define MQTT_TOPIC_SUB  "ebeep/inbox"
+// #define MQTT_TOPIC_PUB  "ebeep/outbox"
 
-char mqttServer[] = MQTT_SERVER;
-uint16_t mqttPort = MQTT_PORT;
+// char mqttServer[] = MQTT_SERVER;
+// uint16_t mqttPort = MQTT_PORT;
 
-char mqttInboxTopic[] = "Beeper_1";
-char mqttOutboxTopic[] = "Beeper_2";
+// char mqttInboxTopic[] = "Beeper_1";
+// char mqttOutboxTopic[] = "Beeper_2";
 
-char mqttUser[] = MQTT_USERNAME;
-char mqttPass[] = MQTT_PASSWORD;
+// char mqttUser[] = MQTT_USERNAME;
+// char mqttPass[] = MQTT_PASSWORD;

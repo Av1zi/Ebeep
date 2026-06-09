@@ -63,7 +63,6 @@ bool confirmLeaveCompose = false;
 
 // ── Battery ───────────────────────────────────────────────────
 //  TODO (ESP32): Read real voltage from a resistor-divider on an ADC pin.
-//  Formula: batteryPct = (vBatt - 3.0) / (4.2 - 3.0) * 100, clamped 0–100.
 int batteryPct = 62;  // placeholder
 
 
@@ -83,6 +82,23 @@ bool lastRight  = HIGH;
 #include "SentState.h"
 #include "GamesState.h"
 #include "wifiState.h"
+
+
+// ═══════════════════════════════════════════════════════════════
+//  BATTERY VOLTAGE READING
+// ═══════════════════════════════════════════════════════════════
+// void updateBatteryPercentage() {
+//   // analogReadMilliVolts reads the pin using internal ADC calibration
+//   // Assumes a 1:1 voltage divider (e.g. two 100k resistors) cutting battery voltage in half
+//   uint32_t pinMilliVolts = analogReadMilliVolts(BATT_PIN);
+//   uint32_t batteryMilliVolts = pinMilliVolts * 2; 
+
+//   float vBatt = batteryMilliVolts / 1000.0;
+
+//   // Standard LiPo mapping: 3.2V (empty) to 4.2V (full)
+//   float pct = (vBatt - 3.2) / (4.2 - 3.2) * 100.0;
+//   batteryPct = constrain((int)pct, 0, 100);
+// }
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -160,7 +176,7 @@ void refreshDisplay() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  MQTT STUB
+//  MQTT
 //  TODO: Replace this whole section with real WiFi + MQTT code.
 // ═══════════════════════════════════════════════════════════════
 
@@ -233,6 +249,7 @@ void setup() {
 //mqttClient.publish(mqttOutboxTopic, "Hello from Ebeep!"); TEST CODE NOT RELEVENT
 
   currentState = STATE_HOME;
+  //updateBatteryPercentage();
   needRefresh = true;
 }
 
@@ -254,6 +271,9 @@ void loop() {
   if (needRefresh) {
     refreshDisplay();
     needRefresh = false;
+    // if (!fastUpdate) {
+    //   updateBatteryPercentage();
+    // }
   }
 
   //Call mqttClient.loop() here to receive incoming messages.
