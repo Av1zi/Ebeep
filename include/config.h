@@ -13,26 +13,27 @@
 //
 //  XIAO ESP32C6 → WeAct E-Paper 2.9" display wiring:
 //
-//    XIAO D10 (MOSI) ──→ SDA / DIN
-//    XIAO D8  (SCK)  ──→ SCL / CLK
-//    XIAO D7         ──→ CS
-//    XIAO D6         ──→ DC
-//    XIAO D5         ──→ RST
-//    XIAO D4         ──→ BUSY
-//    3.3V            ──→ VCC
-//    GND             ──→ GND
+//    XIAO D10 (MOSI) ──> SDA / DIN
+//    XIAO D8  (SCK)  ──> SCL / CLK
+//    XIAO D7         ──> CS
+//    XIAO D6         ──> D/C
+//    XIAO D5         ──> RST
+//    XIAO D4         ──> BUSY
+//    3.3V            ──> VCC
+//    GND             ──> GND
 //
-#define EPD_CS    D7
-#define EPD_DC    D6
-#define EPD_RST   D5
-#define EPD_BUSY  D4
+#define EPD_CS    17   // D7
+#define EPD_DC    16   // D6
+#define EPD_RST   23   // D5
+#define EPD_BUSY  22   // D4
+
+// SPI bus (D8=SCK, D10=MOSI) — these are the hardware SPI pins,
+// GxEPD2 picks them up automatically via SPI.begin(), no defines needed.
 
 // ── Button Pins ───────────────────────────────────────────────
-// Note: D2 (GPIO4) and D3 (GPIO5) are strapping pins. 
-// Avoid holding these down while booting or hitting reset.
-#define BTN_LEFT    D1
-#define BTN_SELECT  D2
-#define BTN_RIGHT   D3
+#define BTN_LEFT    1   // D1
+#define BTN_SELECT  2   // D2
+#define BTN_RIGHT   21   // D3
 
 // ── Analog Battery Pin ────────────────────────────────────────
 //#define BATT_PIN    D0
@@ -83,10 +84,16 @@
 #define SENT_DISPLAY_MS  3000UL
 #define DEBOUNCE_MS      50
 
+unsigned long lastBtnTime = 0;
+
 // ── WiFi Settings ─────────────────────────────────────────────
 // credentials are stored in secret.h (not checked into version control for security)
-char ssid[] = WIFI_SSID;        // your network SSID (name)
-char pass[] = WIFI_PASSWORD;
+//char ssid[] = WIFI_SSID;        // your network SSID (name)
+//char pass[] = WIFI_PASSWORD;
+
+char AP_pass[] = HOTSPOT_PASSWORD; // leave empty ("") for open AP
+char AP_name[] = "Ebeep_1_config";
+
 
 // ── MQTT Settings ─────────────────────────────────────────────
 // credentials are stored in secret.h (not checked into version control for security)

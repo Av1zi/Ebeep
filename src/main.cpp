@@ -6,20 +6,14 @@
 #include <Fonts/FreeMonoBold24pt7b.h>
 
 #include <WiFi.h>
-//#include <WiFiManager.h> add this later on when you move to esp32 right now use the normal wifi library and hardcode the credentials
-//#include <WiFiClientSecure.h> for esp23
-//#include <PubSubClient.h>
-
-
-//WiFiSSLClient wifiClient;
-//PubSubClient mqttClient(wifiClient);
+#include <WiFiManager.h>
+//#include <WiFiClientSecure.h>
 
 
 #include "config.h"
 
 // ═══════════════════════════════════════════════════════════════
 //  DISPLAY DRIVER
-//  Library: https://github.com/ZinggJM/GxEPD2
 // ═══════════════════════════════════════════════════════════════
 GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display(
   GxEPD2_290_BS(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
@@ -114,8 +108,8 @@ void checkButtons() {
   bool midPressed   = (curMid   == LOW && lastMid   == HIGH);
   bool rightPressed = (curRight == LOW && lastRight == HIGH);
 
-  if (leftPressed || midPressed || rightPressed) {
-    delay(DEBOUNCE_MS);  // simple debounce — good enough for e-ink response times
+  if ((leftPressed || midPressed || rightPressed) && (millis() - lastBtnTime > DEBOUNCE_MS)) {
+    lastBtnTime = millis();
 
     switch (currentState) {
       case STATE_HOME:    handleHomeInput   (leftPressed, midPressed, rightPressed); break;
@@ -199,6 +193,14 @@ void refreshDisplay() {
 // ═══════════════════════════════════════════════════════════════
 void setup() {
   Serial.begin(115200);
+  delay(3000); // give time for serial monitor to connect
+  Serial.println("=========Boot==========");
+
+  pinMode(EPD_CS,   OUTPUT);
+  pinMode(EPD_DC,   OUTPUT);
+  pinMode(EPD_RST,  OUTPUT);
+  pinMode(EPD_BUSY, INPUT);
+
   // Buttons
   pinMode(BTN_LEFT,   INPUT_PULLUP);
   pinMode(BTN_SELECT, INPUT_PULLUP);
@@ -208,22 +210,28 @@ void setup() {
   SPI.begin();
   display.init(115200, true, 50, false);
   display.setRotation(1);
-  display.clearScreen();
+ // display.clearScreen();
 
+  currentState = STATE_WIFI;
+  refreshDisplay();
+  Serial.print("Connecting to WiFi...");
+  WiFiManager wifiManager;
 
-  // // skip wifi for now
-  // currentState = STATE_WIFI;
-  // refreshDisplay();
+  // reset settings - wipe stored credentials for testing
+  wifiManager.resetSettings();
 
-  // // Connect WiFi
-  // WiFi.begin(ssid, pass);
-  // Serial.print("Connecting to WiFi...");
-  // while (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) {
-  //   delay(500);
-  //   Serial.print(".");
-  // }
-  // Serial.println(" connected!");  
-
+  bool res;
+  if (AP_pass[0] != '\0') {
+    res = wifiManager.autoConnect(AP_name, AP_pass); // password protected ap
+  } else {
+    res = wifiManager.autoConnect(AP_name);
+  }
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(100);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("Connected to WiFi!");
 
 // Setup MQTT over TLS FOR ESP32
 // -------------------------
