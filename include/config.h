@@ -1,80 +1,57 @@
 #pragma once
 
-#include <secret.h>  // WiFi credentials and MQTT server details (not checked into version control)
-
+#include <secret.h>  // HOTSPOT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_PASSWORD
 
 // ═══════════════════════════════════════════════════════════════
 //  EBEEP — config.h
-//  All hardware pins and layout constants live here.
-//  When porting to ESP32C3: only change the pin numbers below.
+//  Hardware pins, layout constants, and app settings.
+//  All values are compile-time constants — nothing mutable here.
 // ═══════════════════════════════════════════════════════════════
 
-// ── E-Ink Display SPI Pins ────────────────────────────────────
-//
-//  XIAO ESP32C6 → WeAct E-Paper 2.9" display wiring:
-//
-//    XIAO D10 (MOSI) ──> SDA / DIN
-//    XIAO D8  (SCK)  ──> SCL / CLK
-//    XIAO D7         ──> CS
-//    XIAO D6         ──> D/C
-//    XIAO D5         ──> RST
-//    XIAO D4         ──> BUSY
-//    3.3V            ──> VCC
-//    GND             ──> GND
-//
+// ── E-Ink Display SPI Pins (XIAO ESP32C6 → WeAct 2.9") ───────
+//    D10 (MOSI) → SDA/DIN    D8 (SCK) → SCL/CLK  (auto via SPI.begin)
+//    D7  → CS    D6 → DC    D5 → RST    D4 → BUSY
 #define EPD_CS    17   // D7
 #define EPD_DC    16   // D6
 #define EPD_RST   23   // D5
 #define EPD_BUSY  22   // D4
 
-// SPI bus (D8=SCK, D10=MOSI) — these are the hardware SPI pins,
-// GxEPD2 picks them up automatically via SPI.begin(), no defines needed.
-
 // ── Button Pins ───────────────────────────────────────────────
 #define BTN_LEFT    1   // D1
 #define BTN_SELECT  2   // D2
-#define BTN_RIGHT   21   // D3
-
-// ── Analog Battery Pin ────────────────────────────────────────
-//#define BATT_PIN    D0
-// ADD THIS WHEN CONNECTING BATTERY
+#define BTN_RIGHT  21   // D3
 
 // ── Display Dimensions (2.9", landscape) ─────────────────────
 #define SCREEN_W  296
 #define SCREEN_H  128
 
 // ── Vertical Layout ───────────────────────────────────────────
-//
-//   y=  0  ╔══════════════════════════════════════════════════╗
-//          ║  Ebeep                        72%  [████░]       ║
-//   y= 22  ╠══════════════════════════════════════════════════╣
-//   y= 23  ║                                                  ║
-//          ║                 CONTENT AREA          (85px)     ║
-//   y=107  ║                                                  ║
-//   y=108  ╠══════════════════════════════════════════════════╣
-//   y=109  ║   [ Left ]          [ Mid ]          [ Right ]   ║  (19px)
-//   y=127  ╚══════════════════════════════════════════════════╝
-
+//   y=  0  ╔═══ Status bar ══════════════════════════════════╗
+//   y= 22  ╠════════════════════════════════════════════════╣
+//   y= 23  ║           CONTENT AREA  (85 px)                ║
+//   y=107  ║                                                 ║
+//   y=108  ╠════════════════════════════════════════════════╣
+//   y=109  ║   [ Left ]      [ Mid ]      [ Right ]   (19px)║
+//   y=127  ╚════════════════════════════════════════════════╝
 #define DIVIDER_TOP    22
 #define CONTENT_Y      23
-#define CONTENT_H      85    // DIVIDER_BOT - CONTENT_Y
+#define CONTENT_H      85
 #define DIVIDER_BOT   108
 #define BTN_BAR_Y     109
-#define BTN_TEXT_Y    124    // text baseline inside button bar
-#define STATUS_TEXT_Y  17    // text baseline inside status bar
+#define BTN_TEXT_Y    124
+#define STATUS_TEXT_Y  17
 
-// ── Horizontal Column Split (3-button bar) ────────────────────
+// ── 3-Button Bar Column Split ────────────────────────────────
 #define COL_SPLIT1   (SCREEN_W / 3)
 #define COL_SPLIT2   (2 * SCREEN_W / 3)
 #define COL1_CX      (COL_SPLIT1 / 2)
 #define COL2_CX      (COL_SPLIT1 + (COL_SPLIT2 - COL_SPLIT1) / 2)
 #define COL3_CX      (COL_SPLIT2 + (SCREEN_W - COL_SPLIT2) / 2)
 
-// ── Home Screen Tile Layout ───────────────────────────────────
-//  Tile size: 78x60.  Gap between tiles: 16px.  Side margins: 15px.
+// ── Home Screen Tiles (78×60, 16px gap, 15px side margins) ───
 #define TILE_W    78
 #define TILE_H    60
-#define TILE_Y    ((CONTENT_Y) + ((CONTENT_H) - (TILE_H)) / 2)  // vertically centered = 35
+#define TILE_Y    (CONTENT_Y + (CONTENT_H - TILE_H) / 2)
 #define TILE1_X   15
 #define TILE2_X   109
 #define TILE3_X   203
@@ -83,32 +60,17 @@
 #define MAX_MSG_LEN      30
 #define SENT_DISPLAY_MS  3000UL
 #define DEBOUNCE_MS      50
+#define HOLD_DELAY_MS    500
+#define HOLD_REPEAT_MS   150
 
-// ── Button hold-scroll settings ───────────────────────────────
-#define HOLD_DELAY_MS    500   // ms held before fast scroll kicks in
-#define HOLD_REPEAT_MS   150  // ms between repeats once held
+// ── WiFi / MQTT ───────────────────────────────────────────────
+// Credentials come from secret.h (not checked into VCS).
+// AP_pass: leave as "" in secret.h for an open access point.
+#define AP_NAME   "Ebeep_1_config"
 
-unsigned long lastBtnTime   = 0;
-// Hold-scroll state (left and right tracked separately)
-unsigned long holdStartTime = 0;      // when the current btn went down
-int           heldButton    = 0;      // 0=none, -1=left, 1=right
-unsigned long lastRepeatAt  = 0;      // when we last fired a repeat
-
-// ── WiFi Settings ─────────────────────────────────────────────
-// credentials are stored in secret.h (not checked into version control for security)
-
-char AP_pass[16] = HOTSPOT_PASSWORD; // leave empty ("") for open AP (max 15 chars to save space)
-char AP_name[15] = "Ebeep_1_config";
-
-
-// ── MQTT Settings ─────────────────────────────────────────────
-// credentials are stored in secret.h (not checked into version control for security)
-
-char mqttServer[64] = MQTT_SERVER;
-uint16_t mqttPort = MQTT_PORT;
-
-char mqttInboxTopic[9] = "Beeper_1";
-char mqttOutboxTopic[9] = "Beeper_2";
-
-char mqttUser[9] = "Beeper_1";
-char mqttPass[16] = MQTT_PASSWORD; //(max 15 chars to save space)
+constexpr const char* MQTT_SERVER_ADDR  = MQTT_SERVER;
+constexpr uint16_t    MQTT_SERVER_PORT  = MQTT_PORT;
+constexpr const char* MQTT_INBOX_TOPIC  = "Beeper_1";
+constexpr const char* MQTT_OUTBOX_TOPIC = "Beeper_2";
+constexpr const char* MQTT_USERNAME_STR = MQTT_USERNAME;
+constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
