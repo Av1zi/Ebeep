@@ -18,7 +18,7 @@ void drawInbox() {
   if (strlen(lastReceivedMessage) == 0) {
     drawCenteredText(SCREEN_W / 2, CONTENT_Y + 52, "No messages yet.", &FreeMonoBold9pt7b);
   } else {
-    drawCenteredText(SCREEN_W / 2, CONTENT_Y + 56, lastReceivedMessage, &FreeMonoBold12pt7b);
+    drawCenteredText(SCREEN_W / 2, CONTENT_Y + 52, lastReceivedMessage, &FreeMonoBold9pt7b);
   }
 
   // ── Button hints ──────────────────────────────────────────

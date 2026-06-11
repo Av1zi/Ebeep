@@ -5,9 +5,14 @@
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 
-#include <WiFi.h>
+
 #include <WiFiManager.h>
-//#include <WiFiClientSecure.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+
+WiFiClientSecure wifiClient;
+PubSubClient mqttClient(wifiClient);
+
 
 
 #include "config.h"
@@ -57,7 +62,7 @@ bool confirmLeaveCompose = false;
 
 // ── Battery ───────────────────────────────────────────────────
 //  TODO (ESP32): Read real voltage from a resistor-divider on an ADC pin.
-int batteryPct = 62;  // placeholder
+int batteryPct = 67;  // placeholder
 
 
 // ── Button state tracking ─────────────────────────────────────
@@ -103,13 +108,25 @@ void checkButtons() {
   bool curMid   = digitalRead(BTN_SELECT);
   bool curRight = digitalRead(BTN_RIGHT);
 
-  // Edge detection: only fire on the transition HIGH→LOW (button just pressed)
   bool leftPressed  = (curLeft  == LOW && lastLeft  == HIGH);
   bool midPressed   = (curMid   == LOW && lastMid   == HIGH);
   bool rightPressed = (curRight == LOW && lastRight == HIGH);
 
-  if ((leftPressed || midPressed || rightPressed) && (millis() - lastBtnTime > DEBOUNCE_MS)) {
-    lastBtnTime = millis();
+  unsigned long now = millis();
+
+  // ── Fresh press (edge detection) ──────────────────────────
+  if ((leftPressed || midPressed || rightPressed) &&
+      (now - lastBtnTime > DEBOUNCE_MS)) {
+    lastBtnTime = now;
+
+    // Start tracking a hold if it's left or right
+    if (leftPressed || rightPressed) {
+      heldButton    = leftPressed ? -1 : 1;
+      holdStartTime = now;
+      lastRepeatAt  = now;
+    } else {
+      heldButton = 0;  // mid press cancels any hold
+    }
 
     switch (currentState) {
       case STATE_HOME:    handleHomeInput   (leftPressed, midPressed, rightPressed); break;
@@ -120,11 +137,36 @@ void checkButtons() {
     }
   }
 
+  // ── Hold-scroll repeat ────────────────────────────────────
+  // Only fires for Compose and Games, only on left/right hold
+  if (heldButton != 0 &&
+      (currentState == STATE_COMPOSE || currentState == STATE_GAMES)) {
+
+    bool stillHeld = (heldButton == -1) ? (curLeft  == LOW)
+                                        : (curRight == LOW);
+
+    if (!stillHeld) {
+      // Button released — cancel hold
+      heldButton = 0;
+    } else if ((now - holdStartTime >= HOLD_DELAY_MS) &&
+               (now - lastRepeatAt  >= HOLD_REPEAT_MS)) {
+      // Held long enough — fire a repeat
+      lastRepeatAt = now;
+      bool fakeLeft  = (heldButton == -1);
+      bool fakeRight = (heldButton ==  1);
+
+      switch (currentState) {
+        case STATE_COMPOSE: handleComposeInput(fakeLeft, false, fakeRight); break;
+        case STATE_GAMES:   handleGamesInput  (fakeLeft, false, fakeRight); break;
+        default: break;
+      }
+    }
+  }
+
   lastLeft  = curLeft;
   lastMid   = curMid;
   lastRight = curRight;
 }
-
 
 // ═══════════════════════════════════════════════════════════════
 //  DISPLAY REFRESH
@@ -171,20 +213,24 @@ void refreshDisplay() {
 
 // ═══════════════════════════════════════════════════════════════
 //  MQTT
-//  TODO: Replace this whole section with real WiFi + MQTT code.
 // ═══════════════════════════════════════════════════════════════
 
 
-  // void onMessageReceived(char* topic, byte* payload, unsigned int length) {
-  //   strncpy(lastReceivedMessage, (char*)payload, MAX_MSG_LEN);
-  //   lastReceivedMessage[MAX_MSG_LEN] = '\0';
-  //   hasUnreadMessage = true;
-  //   currentState     = STATE_INBOX;
-  //   needRefresh      = true;
-  //   fastUpdate       = true;
+  void onMessageReceived(char* topic, byte* payload, unsigned int length) {
+    unsigned int msgLen = (length < MAX_MSG_LEN) ? length : MAX_MSG_LEN;
+    memcpy(lastReceivedMessage, payload, msgLen);
+    lastReceivedMessage[msgLen] = '\0';
+    hasUnreadMessage = true;
+    if (currentState == STATE_HOME) {
+      needRefresh = true;
+      fastUpdate = true;
+    } else if (currentState == STATE_INBOX) {
+      needRefresh = true;
+      fastUpdate = false;
+    }
 
-  //   // TODO: trigger buzzer melody here
-  // }
+    // TODO: trigger buzzer melody here
+  }
 
 
 
@@ -210,21 +256,25 @@ void setup() {
   SPI.begin();
   display.init(115200, true, 50, false);
   display.setRotation(1);
- // display.clearScreen();
+  //display.clearScreen();
 
+  //===========WIFI SETUP===========
   currentState = STATE_WIFI;
   refreshDisplay();
   Serial.print("Connecting to WiFi...");
   WiFiManager wifiManager;
 
-  // reset settings - wipe stored credentials for testing
-  wifiManager.resetSettings();
+// reset settings - wipe stored credentials for testing
+//wifiManager.resetSettings();
 
   bool res;
+  //res = wifiManager.autoConnect(AP_name, AP_pass);
   if (AP_pass[0] != '\0') {
     res = wifiManager.autoConnect(AP_name, AP_pass); // password protected ap
+    Serial.print("password");
   } else {
     res = wifiManager.autoConnect(AP_name);
+    Serial.print("no password");
   }
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
@@ -233,28 +283,27 @@ void setup() {
   Serial.println("");
   Serial.println("Connected to WiFi!");
 
-// Setup MQTT over TLS FOR ESP32
-// -------------------------
-// wifiClient.setInsecure(); esp32 only
-// mqttClient.setServer(mqttServer, mqttPort);
-// mqttClient.setCallback(onMessageReceived);
-// while (!mqttClient.connected()) {
-//     Serial.print("Connecting to MQTT... server: ");
-//     Serial.print(mqttServer);
-//     Serial.print(" port: ");
-//     Serial.println(mqttPort);
-    
-//     if (mqttClient.connect("Ebeep_Device", mqttUser, mqttPass)) {
-//         Serial.println("connected!");
-//         mqttClient.subscribe(mqttInboxTopic);
-//     } else {
-//         Serial.print("failed, rc=");
-//         Serial.print(mqttClient.state());
-//         Serial.println(" — retrying in 2s");
-//         delay(2000);
-//     }
-// }
-//mqttClient.publish(mqttOutboxTopic, "Hello from Ebeep!"); TEST CODE NOT RELEVENT
+
+  // ===========MQTT SETUP===========
+  wifiClient.setInsecure();
+  mqttClient.setServer(mqttServer, mqttPort);
+  mqttClient.setCallback(onMessageReceived);
+  while (!mqttClient.connected()) {
+      Serial.print("Connecting to MQTT... server: ");
+      Serial.print(mqttServer);
+      Serial.print(" port: ");
+      Serial.println(mqttPort);
+      
+      if (mqttClient.connect("Ebeep_Device", mqttUser, mqttPass)) {
+          Serial.println("connected!");
+          mqttClient.subscribe(mqttInboxTopic);
+      } else {
+          Serial.print("failed, rc=");
+          Serial.print(mqttClient.state());
+          Serial.println(" — retrying in 1s");
+          delay(1000);
+      }
+  }
 
   currentState = STATE_HOME;
   //updateBatteryPercentage();
@@ -285,5 +334,5 @@ void loop() {
   }
 
   //Call mqttClient.loop() here to receive incoming messages.
-  // mqttClient.loop();
+  mqttClient.loop();
 }

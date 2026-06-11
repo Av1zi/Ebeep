@@ -84,28 +84,31 @@
 #define SENT_DISPLAY_MS  3000UL
 #define DEBOUNCE_MS      50
 
-unsigned long lastBtnTime = 0;
+// ── Button hold-scroll settings ───────────────────────────────
+#define HOLD_DELAY_MS    500   // ms held before fast scroll kicks in
+#define HOLD_REPEAT_MS   150  // ms between repeats once held
+
+unsigned long lastBtnTime   = 0;
+// Hold-scroll state (left and right tracked separately)
+unsigned long holdStartTime = 0;      // when the current btn went down
+int           heldButton    = 0;      // 0=none, -1=left, 1=right
+unsigned long lastRepeatAt  = 0;      // when we last fired a repeat
 
 // ── WiFi Settings ─────────────────────────────────────────────
 // credentials are stored in secret.h (not checked into version control for security)
-//char ssid[] = WIFI_SSID;        // your network SSID (name)
-//char pass[] = WIFI_PASSWORD;
 
-char AP_pass[] = HOTSPOT_PASSWORD; // leave empty ("") for open AP
-char AP_name[] = "Ebeep_1_config";
+char AP_pass[16] = HOTSPOT_PASSWORD; // leave empty ("") for open AP (max 15 chars to save space)
+char AP_name[15] = "Ebeep_1_config";
 
 
 // ── MQTT Settings ─────────────────────────────────────────────
 // credentials are stored in secret.h (not checked into version control for security)
 
-// #define MQTT_TOPIC_SUB  "ebeep/inbox"
-// #define MQTT_TOPIC_PUB  "ebeep/outbox"
+char mqttServer[64] = MQTT_SERVER;
+uint16_t mqttPort = MQTT_PORT;
 
-// char mqttServer[] = MQTT_SERVER;
-// uint16_t mqttPort = MQTT_PORT;
+char mqttInboxTopic[9] = "Beeper_1";
+char mqttOutboxTopic[9] = "Beeper_2";
 
-// char mqttInboxTopic[] = "Beeper_1";
-// char mqttOutboxTopic[] = "Beeper_2";
-
-// char mqttUser[] = MQTT_USERNAME;
-// char mqttPass[] = MQTT_PASSWORD;
+char mqttUser[9] = "Beeper_1";
+char mqttPass[16] = MQTT_PASSWORD; //(max 15 chars to save space)

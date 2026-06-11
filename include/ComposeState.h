@@ -141,8 +141,7 @@ void handleComposeInput(bool leftPressed, bool midPressed, bool rightPressed) {
         // Double-space → send
         typedMessage[--messageLen] = '\0';   // strip trailing space
 
-        // TODO (MQTT): publish typedMessage to partner's topic here.
-        //mqttClient.publish(mqttOutboxTopic, typedMessage);
+        mqttClient.publish(mqttOutboxTopic, typedMessage);
 
         currentState  = STATE_SENT;
         sentEnteredAt = millis();
