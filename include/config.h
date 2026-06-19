@@ -70,7 +70,65 @@
 
 constexpr const char* MQTT_SERVER_ADDR  = MQTT_SERVER;
 constexpr uint16_t    MQTT_SERVER_PORT  = MQTT_PORT;
-constexpr const char* MQTT_INBOX_TOPIC  = "Beeper_1";
-constexpr const char* MQTT_OUTBOX_TOPIC = "Beeper_2";
+
+constexpr const char* BEEPER_ID  = "Beeper_1";
+constexpr const char* RECIVER_ID  = "Beeper_2";
+
 constexpr const char* MQTT_USERNAME_STR = MQTT_USERNAME;
 constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
+
+
+// ═══════════════════════════════════════════════════════════════
+//  DISPLAY
+// ═══════════════════════════════════════════════════════════════
+GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display(
+  GxEPD2_290_BS(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
+);
+
+// ═══════════════════════════════════════════════════════════════
+//  NETWORK
+// ═══════════════════════════════════════════════════════════════
+WiFiClientSecure wifiClient;
+PubSubClient     mqttClient(wifiClient);
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE MACHINE
+// ═══════════════════════════════════════════════════════════════
+enum ScreenState : uint8_t {
+  STATE_WIFI,
+  STATE_HOME,
+  STATE_INBOX,
+  STATE_COMPOSE,
+  STATE_SENT,
+  STATE_GAMES,
+  STATE_TICTACTOE
+};
+
+ScreenState currentState = STATE_WIFI;
+
+// ── Display refresh flags ─────────────────────────────────────
+bool needRefresh = false;   // true  → redraw this loop tick
+bool fastUpdate  = false;   // true  → partial refresh (content only)
+                            // false → full refresh (status bar included)
+
+// ── Message buffers ───────────────────────────────────────────
+bool hasUnreadMessage                    = false;
+char lastReceivedMessage[MAX_MSG_LEN+1]  = "";
+char typedMessage[MAX_MSG_LEN+1]         = "";
+uint8_t messageLen                       = 0;
+uint8_t currentLetterIdx                 = 0;
+
+// ── Misc UI state ─────────────────────────────────────────────
+bool          confirmLeaveCompose = false;
+unsigned long sentEnteredAt       = 0;
+int           batteryPct          = 67;   // placeholder — real read TODO
+
+// ── Button / hold-scroll state ────────────────────────────────
+bool          lastLeft        = HIGH;
+bool          lastMid         = HIGH;
+bool          lastRight       = HIGH;
+unsigned long lastBtnTime     = 0;
+unsigned long holdStartTime   = 0;
+unsigned long lastRepeatAt    = 0;
+int8_t        heldButton      = 0;   // 0=none, -1=left, +1=right
+

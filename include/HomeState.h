@@ -23,6 +23,10 @@ void drawHome() {
   // Games tile
   display.drawRect(TILE3_X, TILE_Y, TILE_W, TILE_H, GxEPD_BLACK);
   drawIconGamepad(TILE3_X + TILE_W / 2, TILE_Y + TILE_H / 2);
+  if(TTT_hasOpponent)
+  {
+    display.fillCircle(TILE3_X + TILE_W - 8, TILE_Y + 8, 6, GxEPD_BLACK);
+  }
 
   drawButtonHints("Inbox", "Write", "Games");
 }

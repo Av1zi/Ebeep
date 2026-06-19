@@ -14,7 +14,6 @@ void drawText(int16_t x, int16_t y, const char* text, const GFXfont* font) {
   display.print(text);
 }
 
-
 // Horizontally center text around cx at baseline y.
 void drawCenteredText(int16_t cx, int16_t y, const char* text, const GFXfont* font) {
   display.setFont(font);
@@ -26,9 +25,7 @@ void drawCenteredText(int16_t cx, int16_t y, const char* text, const GFXfont* fo
   display.print(text);
 }
 
-
-// Status bar: "Ebeep" on the left, battery icon + % on the right.
-// Only called on full-screen refreshes.
+// draw the top part
 void drawStatusBar(int battPct) {
   battPct = constrain(battPct, 0, 100);
 
@@ -57,9 +54,6 @@ void drawStatusBar(int battPct) {
   display.drawFastHLine(0, DIVIDER_TOP, SCREEN_W, GxEPD_BLACK);
 }
 
-
-// Bottom button bar: divider line, column separators, and centered labels.
-// Pass "" to leave a slot blank.
 void drawButtonHints(const char* left, const char* mid, const char* right) {
   display.drawFastHLine(0, DIVIDER_BOT, SCREEN_W, GxEPD_BLACK);
   display.drawFastVLine(COL_SPLIT1, DIVIDER_BOT, SCREEN_H - DIVIDER_BOT, GxEPD_BLACK);
@@ -68,3 +62,5 @@ void drawButtonHints(const char* left, const char* mid, const char* right) {
   drawCenteredText(COL2_CX, BTN_TEXT_Y, mid,   &FreeMonoBold9pt7b);
   drawCenteredText(COL3_CX, BTN_TEXT_Y, right, &FreeMonoBold9pt7b);
 }
+
+

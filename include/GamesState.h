@@ -124,10 +124,13 @@ void drawGames() {
   // Dim side carts before drawing borders on top
   if (leftTitle)  fillDim(GCART_LX, GCART_SY, GCART_SW, GCART_SH);
   if (rightTitle) fillDim(GCART_RX, GCART_SY, GCART_SW, GCART_SH);
-
   drawCartridge(GCART_LX, GCART_SY, GCART_SW, GCART_SH, leftTitle,   false, false, li);
   drawCartridge(GCART_RX, GCART_SY, GCART_SW, GCART_SH, rightTitle,  false, false, ri);
   drawCartridge(GCART_CX, GCART_CY, GCART_CW, GCART_CH, centerTitle, true,  true,  gamesSelectedIdx);
+  // Opponent-waiting indicator dot on TicTacToe cartridge (index 0)
+  if (gamesSelectedIdx == 0 && TTT_hasOpponent) {
+    display.fillCircle(GCART_CX + GCART_CW - 8, GCART_CY + 8, 6, GxEPD_BLACK);
+  }
 
   // Position indicator dots
   const int16_t dotStartX = SCREEN_W/2 - ((GAMES_COUNT - 1) * GDOT_GAP) / 2;
@@ -146,7 +149,7 @@ void drawGames() {
 // ─────────────────────────────────────────────────────────────
 static void handleGameSelect(int8_t idx) {
   switch (idx) {
-    case 0: /* currentState = STATE_TICTACTOE; needRefresh = true; */ break;
+    case 0:  currentState = STATE_TICTACTOE; needRefresh = true; enterTicTacToe(); break;
     case 1: /* currentState = STATE_BLACKJACK; needRefresh = true; */ break;
     case 2: /* currentState = STATE_CONNECT4;  needRefresh = true; */ break;
   }

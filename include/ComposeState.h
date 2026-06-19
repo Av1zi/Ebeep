@@ -5,9 +5,11 @@
 //
 //  Layout (content area y=23..107):
 //    y≈51  typed text + cursor underline
+//    y≈35  progress bar (fills as you type, inverts at limit)
 //    y≈90  < [ selected char ] >  selector
 //
 //  Double-space to send. DEL on empty → leave-confirm popup.
+//  At MAX_MSG_LEN: only DEL and double-space (send) work.
 // ═══════════════════════════════════════════════════════════════
 
 // Frequency-ordered: space first for fastest access.
@@ -45,7 +47,23 @@ void drawCompose() {
     snprintf(textBuf, sizeof(textBuf), "...%.19s_", typedMessage + messageLen - 19);
   }
   drawCenteredText(SCREEN_W / 2, CONTENT_Y + 28, textBuf, &FreeMonoBold9pt7b);
-  display.drawFastHLine(8, CONTENT_Y + 33, SCREEN_W - 16, GxEPD_BLACK);
+
+  // ── Progress bar ──────────────────────────────────────────
+  constexpr int16_t barX = 8;
+  constexpr int16_t barY = CONTENT_Y + 35;
+  constexpr int16_t barW = SCREEN_W - 16;
+  constexpr int16_t barH = 5;
+
+  const bool atLimit = (messageLen >= MAX_MSG_LEN);
+  const int16_t fillW = atLimit ? barW : (int16_t)((messageLen * barW) / MAX_MSG_LEN);
+
+  if (atLimit) {
+    // Fully filled + invert to make it obvious
+    display.fillRect(barX, barY, barW, barH, GxEPD_BLACK);
+  } else {
+    display.drawRect(barX, barY, barW, barH, GxEPD_BLACK);
+    if (fillW > 0) display.fillRect(barX, barY, fillW, barH, GxEPD_BLACK);
+  }
 
   // ── Letter selector ───────────────────────────────────────
   constexpr int16_t selCX = SCREEN_W / 2;
@@ -113,15 +131,20 @@ void handleComposeInput(bool leftPressed, bool midPressed, bool rightPressed) {
     } else {
       const char ch = (char)pgm_read_byte(&ALPHABET[currentLetterIdx]);
 
-      // Double-space → send
+      // Double-space → send (allowed even at limit — last char must already be space,
+      // but at limit you can't add one, so handle: if at limit and last char is space,
+      // a second space press sends. We check BEFORE the length guard.)
       if (ch == ' ' && messageLen > 0 && typedMessage[messageLen - 1] == ' ') {
         typedMessage[--messageLen] = '\0';   // strip trailing space
-        mqttClient.publish(MQTT_OUTBOX_TOPIC, typedMessage);
+        mqttClient.publish((String(RECIVER_ID) + "/inbox").c_str(), typedMessage);
         currentState  = STATE_SENT;
         sentEnteredAt = millis();
         needRefresh   = true;
         fastUpdate    = false;
-      } else if (messageLen < MAX_MSG_LEN) {
+      } else if (messageLen >= MAX_MSG_LEN) {
+        // At limit — only DEL and double-space (above) work; ignore everything else.
+        return;
+      } else {
         typedMessage[messageLen++] = ch;
         typedMessage[messageLen]   = '\0';
         needRefresh = true;
