@@ -55,12 +55,12 @@ Messages are typed using a 3-button scrollable alphabet:
 
 - [x] Mockup version for the UI (finishing touches)
 - [ ] Wiring design complete
-- [ ] MQTT publish/subscribe
-- [ ] WiFiManager captive portal integration
+- [X] MQTT publish/subscribe
+- [X] WiFiManager captive portal integration
 - [X] Typing UI with scrollable alphabet
 - [x] Full screen state machine
 - [ ] Buzzer melodies
-- [ ] Enclosure / physical build
+- [X] Enclosure / physical build
 
 ---
 
