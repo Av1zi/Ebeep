@@ -48,8 +48,39 @@ void drawStatusBar(int battPct) {
   int16_t tbx, tby;
   uint16_t tbw, tbh;
   display.getTextBounds(buf, 0, 0, &tbx, &tby, &tbw, &tbh);
-  display.setCursor(bx - 5 - tbw - tbx, STATUS_TEXT_Y);
+  
+  int16_t textStartX = bx - 5 - tbw - tbx;
+  display.setCursor(textStartX, STATUS_TEXT_Y);
   display.print(buf);
+
+  // ── Network Connection Status Icons ────────────────────────
+  int16_t iconY = 7;
+  int16_t mx = textStartX - 16; // MQTT Icon X coordinate
+  int16_t wx = textStartX - 32; // WiFi Icon X coordinate
+
+  // Draw WiFi Status Icon (3 rising signal bars)
+  if (WiFi.status() == WL_CONNECTED) {
+    display.fillRect(wx,     iconY + 6, 2, 4,  GxEPD_BLACK);
+    display.fillRect(wx + 4, iconY + 3, 2, 7,  GxEPD_BLACK);
+    display.fillRect(wx + 8, iconY,     2, 10, GxEPD_BLACK);
+  } else {
+    // Hollow outline bars + strike-through line if disconnected
+    display.drawRect(wx,     iconY + 6, 2, 4,  GxEPD_BLACK);
+    display.drawRect(wx + 4, iconY + 3, 2, 7,  GxEPD_BLACK);
+    display.drawRect(wx + 8, iconY,     2, 10, GxEPD_BLACK);
+    display.drawLine(wx - 2, iconY + 10, wx + 10, iconY, GxEPD_BLACK);
+  }
+
+  // Draw MQTT Status Icon (Custom 'M' Node)
+  display.drawLine(mx,     iconY + 10, mx,     iconY,     GxEPD_BLACK);
+  display.drawLine(mx,     iconY,     mx + 4, iconY + 5, GxEPD_BLACK);
+  display.drawLine(mx + 4, iconY + 5, mx + 8, iconY,     GxEPD_BLACK);
+  display.drawLine(mx + 8, iconY,     mx + 8, iconY + 10, GxEPD_BLACK);
+  
+  if (!mqttClient.connected()) {
+    // Strike-through line if disconnected
+    display.drawLine(mx - 2, iconY + 10, mx + 10, iconY, GxEPD_BLACK);
+  }
 
   display.drawFastHLine(0, DIVIDER_TOP, SCREEN_W, GxEPD_BLACK);
 }
@@ -62,5 +93,3 @@ void drawButtonHints(const char* left, const char* mid, const char* right) {
   drawCenteredText(COL2_CX, BTN_TEXT_Y, mid,   &FreeMonoBold9pt7b);
   drawCenteredText(COL3_CX, BTN_TEXT_Y, right, &FreeMonoBold9pt7b);
 }
-
-

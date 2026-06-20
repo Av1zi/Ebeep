@@ -10,7 +10,6 @@
 
 #include "config.h"
 
-
 // ═══════════════════════════════════════════════════════════════
 //  CODE INJECTION  (order matters — each file uses symbols above)
 // ═══════════════════════════════════════════════════════════════
@@ -26,6 +25,39 @@
 #include "wifiState.h"
 #include "Callbacks.h"
 
+// ═══════════════════════════════════════════════════════════════
+//  Functions
+// ═══════════════════════════════════════════════════════════════
+WiFiManager wm;
+unsigned long lastReconnectAttempt = 0;
+bool lastWifiState = false;
+bool lastMqttState = false;
+
+void connectWifi(){
+  if (sizeof(HOTSPOT_PASSWORD) > 1) {
+    wm.autoConnect(AP_NAME, HOTSPOT_PASSWORD);
+  } else {
+    wm.autoConnect(AP_NAME);
+  }
+  while (WiFi.status() != WL_CONNECTED) delay(100);
+  Serial.println("WiFi connected");
+  lastWifiState = true;
+}
+
+// Rewritten to be Non-Blocking
+bool connectMQTT(){
+  Serial.print("MQTT connect... ");
+  if (mqttClient.connect("Ebeep_Device", MQTT_USERNAME_STR, MQTT_PASSWORD_STR)) {
+    Serial.println("OK");
+    mqttClient.subscribe((String(BEEPER_ID) + "/inbox").c_str());
+    mqttClient.subscribe((String(BEEPER_ID) + "/games").c_str());
+    lastMqttState = true;
+    return true;
+  } else {
+    Serial.printf("failed rc=%d\n", mqttClient.state());
+    return false;
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  SETUP
@@ -34,9 +66,6 @@ void setup() {
   Serial.begin(115200);
   delay(2000);
   Serial.println("=== Ebeep Boot ===");
-
-  // Lower CPU frequency to 80 MHz — saves ~20 mA with no UI impact.
-  setCpuFrequencyMhz(80);
 
   pinMode(EPD_CS,   OUTPUT);
   pinMode(EPD_DC,   OUTPUT);
@@ -49,41 +78,20 @@ void setup() {
   SPI.begin();
   display.init(115200, true, 50, false);
   display.setRotation(1);
-
-  // Show "Connecting..." screen while WiFi/MQTT come up.
+  
   currentState = STATE_WIFI;
-  refreshDisplay();
+  needRefresh = true;
 
   // ── WiFi ─────────────────────────────────────────────────
-  WiFiManager wm;
-  //wm.resetSettings();  // uncomment to wipe saved credentials
-
-  if (sizeof(HOTSPOT_PASSWORD) > 1) {   // non-empty password in secret.h
-    wm.autoConnect(AP_NAME, HOTSPOT_PASSWORD);
-  } else {
-    wm.autoConnect(AP_NAME);
-  }
-  while (WiFi.status() != WL_CONNECTED) delay(100);
-  Serial.println("WiFi connected");
-
+  connectWifi();
+  wifiClient.setInsecure();
+  WiFi.setAutoReconnect(true); // Let hardware handle background wifi reconnection
   WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
   // ── MQTT ─────────────────────────────────────────────────
-  wifiClient.setInsecure();
   mqttClient.setServer(MQTT_SERVER_ADDR, MQTT_SERVER_PORT);
   mqttClient.setCallback(onMessageReceived);
-
-  while (!mqttClient.connected()) {
-    Serial.print("MQTT connect... ");
-    if (mqttClient.connect("Ebeep_Device", MQTT_USERNAME_STR, MQTT_PASSWORD_STR)) {
-      Serial.println("OK");
-      mqttClient.subscribe((String(BEEPER_ID) + "/inbox").c_str());
-      mqttClient.subscribe((String(BEEPER_ID) + "/games").c_str());
-    } else {
-      Serial.printf("failed rc=%d, retry in 1s\n", mqttClient.state());
-      delay(1000);
-    }
-  }
+  connectMQTT();
 
   currentState = STATE_HOME;
   needRefresh  = true;
@@ -93,8 +101,34 @@ void setup() {
 //  LOOP
 // ═══════════════════════════════════════════════════════════════
 void loop() {
+  unsigned long now = millis();
+  
   checkButtons();
-  mqttClient.loop();
+  
+  bool currentWifiState = (WiFi.status() == WL_CONNECTED);
+  bool currentMqttState = mqttClient.connected();
+
+  if (currentWifiState != lastWifiState || currentMqttState != lastMqttState) {
+    lastWifiState = currentWifiState;
+    lastMqttState = currentMqttState;
+    needRefresh = true; // Connection changed, update the icons visually!
+  }
+
+  if (!currentWifiState) {
+    // WiFi is down. Hardware is auto-reconnecting.
+  } 
+  else if (!currentMqttState) {
+    if (now - lastReconnectAttempt > 5000) {
+      lastReconnectAttempt = now;
+      if (connectMQTT()) {
+        lastReconnectAttempt = 0;
+      }
+    }
+  } 
+  else {
+    // Everything is healthy, process incoming/outgoing packets
+    mqttClient.loop();
+  }
 
   // Auto-dismiss Sent screen.
   if (currentState == STATE_SENT && (millis() - sentEnteredAt >= SENT_DISPLAY_MS)) {
