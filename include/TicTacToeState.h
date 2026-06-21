@@ -2,10 +2,12 @@
 
 bool    inTicTacToe     = false;
 bool    TTT_hasOpponent = false;
-bool    TTT_isInitiator = false;   // true = we sent TTT_START (we go first / break ties)
+bool    TTT_pendingStart= false;   // we've sent TTT_START, waiting for ACK / race resolution
+bool    TTT_isInitiator = false;   // true = we went first in the original game
 char    TTT_board[9];              // flat 3x3 — avoids /3, %3 divisions on every access
 bool    TTT_myTurn      = false;
 int8_t  TTT_selected    = 0;
+int8_t  TTT_winLine     = -1;      // index into TTT_LINES for the winning line, -1 = none/draw
 char    TTT_SYMBOL      = 'X';     // assigned per-game: initiator='X', joiner='O'
 
 // ── Game-over / rematch / popup state, packed into one byte ─────
@@ -51,7 +53,7 @@ char TTT_checkOutcome() {
     if (a == '\0') continue;  // empty cell can't start a winning line — cheap skip
     const char b = TTT_board[pgm_read_byte(&TTT_LINES[i][1])];
     const char c = TTT_board[pgm_read_byte(&TTT_LINES[i][2])];
-    if (a == b && b == c) return a;
+    if (a == b && b == c) { TTT_winLine = i; return a; }
   }
   for (uint8_t i = 0; i < 9; i++)
     if (TTT_board[i] == '\0') return '\0';  // still open cells → game ongoing
@@ -122,6 +124,14 @@ void drawTicTacToe() {
   if (result != TTT_NONE) {
     TTT_drawBoard();
 
+    // Strike a line through the winning three cells so it's clear how the game ended.
+    if (TTT_winLine >= 0) {
+      int16_t x0, y0, x1, y1, w, h;
+      TTT_cellRect(pgm_read_byte(&TTT_LINES[TTT_winLine][0]), x0, y0, w, h);
+      TTT_cellRect(pgm_read_byte(&TTT_LINES[TTT_winLine][2]), x1, y1, w, h);
+      display.drawLine(x0 + w / 2, y0 + h / 2, x1 + w / 2, y1 + h / 2, GxEPD_BLACK);
+    }
+
     // Headline banner over the board, white-filled behind it for legibility.
     constexpr int16_t bannerH = 22;
     const int16_t bannerY = TTT_TOP - bannerH - 2;
@@ -166,6 +176,30 @@ static void TTT_resetBoard() {
   memset(TTT_board, '\0', sizeof(TTT_board));
   TTT_selected = 0;
   TTT_flags    = TTT_NONE;
+  TTT_winLine  = -1;
+}
+
+// We've been confirmed as the joiner — opponent invited us, or lost the
+// simultaneous-press tiebreak below. ACK them so they stop waiting.
+void TTT_joinAsOpponent() {
+  TTT_isInitiator  = false;
+  TTT_SYMBOL       = 'O';
+  TTT_myTurn       = false;
+  TTT_pendingStart = false;
+  TTT_hasOpponent  = true;
+  mqttClient.publish(TTT_topicGameOut.c_str(), "TTT_START_ACK");
+  startGameTTT();
+}
+
+// We've been confirmed as the initiator — opponent ack'd our invite, or we
+// won the simultaneous-press tiebreak below.
+void TTT_becomeInitiator() {
+  TTT_isInitiator  = true;
+  TTT_SYMBOL       = 'X';
+  TTT_myTurn       = true;
+  TTT_pendingStart = false;
+  TTT_hasOpponent  = true;
+  startGameTTT();
 }
 
 void enterTicTacToe() {
@@ -175,21 +209,19 @@ void enterTicTacToe() {
   TTT_topicIn      = String(BEEPER_ID)  + "/games/TTT";
 
   TTT_resetBoard();
+  mqttClient.subscribe(TTT_topicIn.c_str());
+
   if (TTT_hasOpponent) {
-    // They invited us first (gameReqHandler in main.cpp already set
-    // TTT_hasOpponent via the "/games" topic) — we're the joiner.
-    TTT_isInitiator = false;
-    TTT_SYMBOL      = 'O';
-    TTT_myTurn      = false;   // initiator goes first, not us
+    // They invited us first (gameReqHandler already saw their TTT_START) — join now.
+    TTT_joinAsOpponent();
   } else {
-    // We're pressing Play first — we're the initiator.
-    TTT_isInitiator = true;
-    TTT_SYMBOL      = 'X';
-    TTT_myTurn      = true;
+    // Nobody's invited us — declare ourselves and wait. If they pressed Play
+    // at the same moment, gameReqHandler resolves the race deterministically
+    // (see TTT_START handling in Callbacks.h) instead of both sides assuming X.
+    TTT_pendingStart = true;
+    needRefresh      = true;
     mqttClient.publish(TTT_topicGameOut.c_str(), "TTT_START");
   }
-  startGameTTT();  // sets inTicTacToe regardless of role
-  mqttClient.subscribe(TTT_topicIn.c_str());
 }
 
 // Resets the board for a rematch. iGoFirst is computed explicitly by the
@@ -221,8 +253,8 @@ void checkTicTacToeMessages(char* payload) {
   } else if (STARTS_WITH(payload, "TTT_REMATCH")) {
     if (TTT_I_WANT_REMATCH) {
       // Simultaneous request race — neither side ACK'd the other.
-      // Fall back to original-initiator tiebreak (both sides agree on this).
-      TTT_startRematch(TTT_isInitiator);
+      // Same deterministic tiebreak used for game start (both sides agree on this).
+      TTT_startRematch(strcmp(BEEPER_ID, RECIVER_ID) < 0);
     } else {
       // Clean accept: they proposed, we hadn't asked yet. ACK and let them go first.
       mqttClient.publish(TTT_topicOut.c_str(), "TTT_REMATCH_ACK");
@@ -244,15 +276,26 @@ void checkTicTacToeMessages(char* payload) {
 }
 
 void leaveTicTacToe() {
-  mqttClient.publish(TTT_topicOut.c_str(), "TTT_LEFT");
+  // Sent on the broad "/games" channel (not "/games/TTT") so it reaches the
+  // opponent even if they haven't joined yet and never subscribed to TTT's
+  // own topic — e.g. cancelling an invite nobody's accepted.
+  mqttClient.publish(TTT_topicGameOut.c_str(), "TTT_LEFT");
   mqttClient.unsubscribe(TTT_topicIn.c_str());
-  inTicTacToe   = false;
-  TTT_flags     = TTT_NONE;
-  currentState  = STATE_HOME;
-  needRefresh   = true;
+  inTicTacToe      = false;
+  TTT_pendingStart = false;
+  TTT_hasOpponent  = false;
+  TTT_flags        = TTT_NONE;
+  currentState     = STATE_HOME;
+  needRefresh      = true;
 }
 
 void handleTicTacToeInput(bool leftPressed, bool midPressed, bool rightPressed) {
+  // ── Waiting for opponent: nothing to lose yet, skip the confirm popup ──
+  if (!TTT_hasOpponent) {
+    if (leftPressed) leaveTicTacToe();
+    return;
+  }
+
   // ── Leave-confirm popup ────────────────────────────────────
   if (TTT_CONFIRM_LEAVE) {
     if (leftPressed) {

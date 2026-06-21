@@ -125,13 +125,29 @@ void refreshDisplay() {
 
 
 // ── MQTT Callbacks ────────────────────────────────────────────
+// Handles the broad "<id>/games" channel — invite-level presence messages
+// (TTT_START / TTT_START_ACK / TTT_LEFT). Both devices are subscribed to
+// this from boot, regardless of whether they're currently in a game, so
+// it's the only channel guaranteed to reach someone who hasn't joined yet.
 void gameReqHandler(char* payload) {
   if (strcmp(payload, "TTT_START") == 0) {
-    TTT_hasOpponent = true;
+    if (TTT_pendingStart) {
+      // Both sides pressed Play at the same moment — neither has seen the
+      // other's invite yet. Deterministic tiebreak so exactly one becomes
+      // initiator (X) and the other joins (O); see TTT_pendingStart usage.
+      if (strcmp(BEEPER_ID, RECIVER_ID) < 0) TTT_becomeInitiator();
+      else                                    TTT_joinAsOpponent();
+    } else if (!inTicTacToe) {
+      TTT_hasOpponent = true;  // they invited us — show the notification dot
+    }
+    // else: already in a confirmed game — stray message, ignore.
+  } else if (strcmp(payload, "TTT_START_ACK") == 0) {
+    if (TTT_pendingStart) TTT_becomeInitiator();
   } else if (strcmp(payload, "TTT_LEFT") == 0) {
-    TTT_hasOpponent = false;
+    TTT_hasOpponent  = false;
+    TTT_pendingStart = false;
   }
-  if (currentState == STATE_HOME || currentState == STATE_GAMES) {
+  if (currentState == STATE_HOME || currentState == STATE_GAMES || currentState == STATE_TICTACTOE) {
     needRefresh = true;
     fastUpdate  = true;
   }
