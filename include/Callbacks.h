@@ -126,9 +126,7 @@ void refreshDisplay() {
 
 // ── MQTT Callbacks ────────────────────────────────────────────
 // Handles the broad "<id>/games" channel — invite-level presence messages
-// (TTT_START / TTT_START_ACK / TTT_LEFT). Both devices are subscribed to
-// this from boot, regardless of whether they're currently in a game, so
-// it's the only channel guaranteed to reach someone who hasn't joined yet.
+// (TTT_START / TTT_START_ACK / TTT_LEFT).
 void gameReqHandler(char* payload) {
   if (strcmp(payload, "TTT_START") == 0) {
     if (TTT_pendingStart) {
@@ -146,6 +144,14 @@ void gameReqHandler(char* payload) {
   } else if (strcmp(payload, "TTT_LEFT") == 0) {
     TTT_hasOpponent  = false;
     TTT_pendingStart = false;
+    if (currentState == STATE_TICTACTOE) {
+      inTicTacToe  = false;
+      TTT_flags    = TTT_NONE;
+      currentState = STATE_HOME;
+      needRefresh  = true;
+      fastUpdate   = false;
+      return;
+    }
   }
   if (currentState == STATE_HOME || currentState == STATE_GAMES || currentState == STATE_TICTACTOE) {
     needRefresh = true;

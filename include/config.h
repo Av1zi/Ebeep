@@ -8,9 +8,19 @@
 //  All values are compile-time constants — nothing mutable here.
 // ═══════════════════════════════════════════════════════════════
 
-// ── E-Ink Display SPI Pins (XIAO ESP32C6 → WeAct 2.9") ───────
-//    D10 (MOSI) → SDA/DIN    D8 (SCK) → SCL/CLK  (auto via SPI.begin)
-//    D7  → CS    D6 → DC    D5 → RST    D4 → BUSY
+// ── E-Ink Display SPI Pins ────────────────────────────────────
+//
+//  XIAO ESP32C6 → WeAct E-Paper 2.9" display wiring:
+//
+//    XIAO D10 (MOSI) ──> SDA / DIN
+//    XIAO D8  (SCK)  ──> SCL / CLK
+//    XIAO D7         ──> CS
+//    XIAO D6         ──> D/C
+//    XIAO D5         ──> RES / RST
+//    XIAO D4         ──> BUSY
+//    3.3V            ──> VCC
+//    GND             ──> GND
+
 #define EPD_CS    17   // D7
 #define EPD_DC    16   // D6
 #define EPD_RST   23   // D5

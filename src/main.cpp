@@ -83,6 +83,7 @@ void setup() {
   needRefresh = true;
 
   // ── WiFi ─────────────────────────────────────────────────
+  //wm.resetSettings();  // uncomment to erase settings
   connectWifi();
   wifiClient.setInsecure();
   WiFi.setAutoReconnect(true); // Let hardware handle background wifi reconnection
