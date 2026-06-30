@@ -1,8 +1,19 @@
 // ═══════════════════════════════════════════════════════════════
 //  Callbacks.h
 //  Must be included AFTER all state files.
-//  Order: checkButtons → refreshDisplay → MQTT callbacks
 // ═══════════════════════════════════════════════════════════════
+
+void updateBattery() {
+  uint32_t sum = 0;
+  for (int i = 0; i < 16; i++) sum += analogReadMilliVolts(A0);
+  // avg mV at ADC, ×2 for divider → vBat in mV
+  uint32_t vBat = (sum / 16) * 2;
+  // 3000–4200 mV range → 0–100%
+  batteryPct = (int)(((int)vBat - 3000) * 100 / 1200);
+  batteryPct = constrain(batteryPct, 0, 100);
+}
+
+
 
 bool pendingLeft  = false;
 bool pendingMid   = false;

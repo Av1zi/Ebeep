@@ -77,7 +77,7 @@ void setup() {
 
   SPI.begin();
   display.init(115200, true, 50, false);
-  display.setRotation(1);
+  display.setRotation(3);
   
   currentState = STATE_WIFI;
   needRefresh = true;
@@ -101,8 +101,12 @@ void setup() {
 // ═══════════════════════════════════════════════════════════════
 //  LOOP
 // ═══════════════════════════════════════════════════════════════
+static unsigned long lastBattRead = 0;
+static unsigned long now;
+
 void loop() {
-  unsigned long now = millis();
+  now = millis();
+  lastBattRead = 0;
   
   checkButtons();
   
@@ -130,6 +134,8 @@ void loop() {
     // Everything is healthy, process incoming/outgoing packets
     mqttClient.loop();
   }
+
+  updateBattery();
 
   // Auto-dismiss Sent screen.
   if (currentState == STATE_SENT && (millis() - sentEnteredAt >= SENT_DISPLAY_MS)) {

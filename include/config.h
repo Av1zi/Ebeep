@@ -131,7 +131,7 @@ uint8_t currentLetterIdx                 = 0;
 // ── Misc UI state ─────────────────────────────────────────────
 bool          confirmLeaveCompose = false;
 unsigned long sentEnteredAt       = 0;
-int           batteryPct          = 67;   // placeholder — real read TODO
+int           batteryPct          = 100;
 
 // ── Button / hold-scroll state ────────────────────────────────
 bool          lastLeft        = HIGH;
