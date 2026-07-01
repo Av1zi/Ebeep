@@ -29,7 +29,9 @@ void drawCenteredText(int16_t cx, int16_t y, const char* text, const GFXfont* fo
 void drawStatusBar(int battPct) {
   battPct = constrain(battPct, 0, 100);
 
-  drawText(8, STATUS_TEXT_Y, "Ebeep", &FreeMonoBold9pt7b);
+  // Title swaps to a warning below LOW_BATT_PCT — same slot, no layout changes needed.
+  const char* title = (battPct <= LOW_BATT_PCT) ? "LOW BATT!" : "Ebeep";
+  drawText(8, STATUS_TEXT_Y, title, &FreeMonoBold9pt7b);
 
   // Battery body + terminal nub
   constexpr int16_t bx = 248, by = 5, bw = 36, bh = 13;

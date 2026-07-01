@@ -78,38 +78,46 @@ void setup() {
   SPI.begin();
   display.init(115200, true, 50, false);
   display.setRotation(3);
-  
-  currentState = STATE_WIFI;
-  needRefresh = true;
+
+  updateBattery();
+  mqttClient.setServer(MQTT_SERVER_ADDR, MQTT_SERVER_PORT);
+  mqttClient.setCallback(onMessageReceived);
+
+
+  bool wokeFromTimer = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
+  if (wokeFromTimer && quickCheckAndMaybeSleep()) return;
 
   // ── WiFi ─────────────────────────────────────────────────
-  //wm.resetSettings();  // uncomment to erase settings
-  connectWifi();
-  wifiClient.setInsecure();
+  if (WiFi.status() != WL_CONNECTED) {
+    currentState = STATE_WIFI;
+    needRefresh  = true;
+    //wm.resetSettings();  // uncomment to erase settings
+    connectWifi();
+    wifiClient.setInsecure();
+  }
   WiFi.setAutoReconnect(true); // Let hardware handle background wifi reconnection
   WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
   // ── MQTT ─────────────────────────────────────────────────
-  mqttClient.setServer(MQTT_SERVER_ADDR, MQTT_SERVER_PORT);
-  mqttClient.setCallback(onMessageReceived);
-  connectMQTT();
+  if (!mqttClient.connected()) connectMQTT();
+  syncNightClock();  // one-time NTP sync; RTC keeps time through deep sleep after that
 
   currentState = STATE_HOME;
   needRefresh  = true;
+  markActivity();
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  LOOP
 // ═══════════════════════════════════════════════════════════════
-static unsigned long lastBattRead = 0;
+static unsigned long lastStatusBarRefresh = 0;
 static unsigned long now;
 
 void loop() {
   now = millis();
-  lastBattRead = 0;
-  
+
   checkButtons();
-  
+
   bool currentWifiState = (WiFi.status() == WL_CONNECTED);
   bool currentMqttState = mqttClient.connected();
 
@@ -147,5 +155,12 @@ void loop() {
   if (needRefresh) {
     needRefresh = false;
     refreshDisplay();
+    lastStatusBarRefresh = now;  // full refresh just redrew the status bar too
+  } else if (now - lastStatusBarRefresh > STATUS_REFRESH_MS) {
+    // Battery/WiFi/MQTT icons update on their own, independent of content.
+    lastStatusBarRefresh = now;
+    refreshStatusBarOnly();
   }
+
+  handlePowerState();  // drops to deep sleep once the active window has expired
 }

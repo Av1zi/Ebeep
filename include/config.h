@@ -73,6 +73,25 @@
 #define HOLD_DELAY_MS    500
 #define HOLD_REPEAT_MS   150
 
+// ── Power Management ──────────────────────────────────────────
+//   Active   : awake, WiFi modem-sleep only, for ACTIVE_TIMEOUT_MS
+//              after the last button press or message.
+//   Default  : deep sleep, wake every WAKE_INTERVAL_DEFAULT_S.
+//   Night    : deep sleep, wake every WAKE_INTERVAL_NIGHT_S
+//   Low batt : deep sleep, wake every WAKE_INTERVAL_LOWBATT_S (batt < LOW_BATT_PCT) — wins over night.
+#define WAKE_INTERVAL_DEFAULT_S   30UL
+#define WAKE_INTERVAL_NIGHT_S     120UL
+#define WAKE_INTERVAL_LOWBATT_S   120UL
+#define ACTIVE_TIMEOUT_MS         (10UL * 60 * 1000)   // stay awake this long after activity
+#define STATUS_REFRESH_MS         (2UL * 60 * 1000)    // battery-only partial refresh cadence
+#define LOW_BATT_PCT              10                   // below this: 2min sleep tier + status bar warning
+#define NIGHT_START_HOUR          0
+#define NIGHT_END_HOUR            8
+// Default is Israel (IST/IDT);
+#define TZ_STRING                 "IST-2IDT,M3.4.4/26,M10.5.0"
+#define WIFI_CONNECT_TIMEOUT_MS   5000UL
+#define MQTT_LISTEN_WINDOW_MS     3000UL
+
 // ── WiFi / MQTT ───────────────────────────────────────────────
 // Credentials come from secret.h (not checked into VCS).
 // AP_pass: leave as "" in secret.h for an open access point.
@@ -86,6 +105,11 @@ constexpr const char* RECIVER_ID  = "Beeper_2";
 
 constexpr const char* MQTT_USERNAME_STR = MQTT_USERNAME;
 constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
+
+// Defined in main.cpp — forward-declared so PowerState.h can call them
+// before their definitions appear later in the same translation unit.
+void connectWifi();
+bool connectMQTT();
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -142,3 +166,5 @@ unsigned long holdStartTime   = 0;
 unsigned long lastRepeatAt    = 0;
 int8_t        heldButton      = 0;   // 0=none, -1=left, +1=right
 
+// ── Power state ────────────────────────────────────────────────
+unsigned long lastActivityMillis = 0;   // reset on any button press or message — see PowerState.h markActivity()

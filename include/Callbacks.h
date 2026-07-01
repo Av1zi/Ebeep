@@ -1,5 +1,13 @@
+#pragma once
+#include <esp_sleep.h>
+#include <time.h>
+
 // ═══════════════════════════════════════════════════════════════
 //  Callbacks.h
+//  Buttons, display refresh, MQTT callbacks, and deep-sleep power
+//  management — merged into one file so every function is defined
+//  before it's used (checkButtons() and drawCurrentScreen() are
+//  needed by the power-management refresh helpers below them).
 //  Must be included AFTER all state files.
 // ═══════════════════════════════════════════════════════════════
 
@@ -13,6 +21,10 @@ void updateBattery() {
   batteryPct = constrain(batteryPct, 0, 100);
 }
 
+// Resets the active-mode timer. Call on any button press or incoming message.
+void markActivity() {
+  lastActivityMillis = millis();
+}
 
 
 bool pendingLeft  = false;
@@ -35,6 +47,7 @@ void checkButtons() {
 
   if ((leftPressed || midPressed || rightPressed) && (now - lastBtnTime > DEBOUNCE_MS)) {
     lastBtnTime = now;
+    markActivity();  // any press keeps the device in the active (modem-sleep) tier
     if (isRefreshing) {
       pendingLeft  |= leftPressed;
       pendingMid   |= midPressed;
@@ -83,6 +96,22 @@ void checkButtons() {
 }
 
 
+// Draws whatever the current screen state is. Shared by the normal
+// content refresh and the periodic status-only refresh below, so the
+// two never drift out of sync with each other.
+void drawCurrentScreen() {
+  switch (currentState) {
+    case STATE_HOME:      drawHome();      break;
+    case STATE_INBOX:     drawInbox();     break;
+    case STATE_COMPOSE:   drawCompose();   break;
+    case STATE_SENT:      drawSent();      break;
+    case STATE_GAMES:     drawGames();     break;
+    case STATE_WIFI:      drawWifi();      break;
+    case STATE_TICTACTOE: drawTicTacToe(); break;
+  }
+}
+
+
 // ── Display Refresh ───────────────────────────────────────────
 // Calls checkButtons() mid-refresh so button presses aren't lost
 // while the e-ink panel is transferring data.
@@ -99,19 +128,8 @@ void refreshDisplay() {
   do {
     display.fillScreen(GxEPD_WHITE);
     if (!fastUpdate) drawStatusBar(batteryPct);
-
-    switch (currentState) {
-      case STATE_HOME:      drawHome();      break;
-      case STATE_INBOX:     drawInbox();     break;
-      case STATE_COMPOSE:   drawCompose();   break;
-      case STATE_SENT:      drawSent();      break;
-      case STATE_GAMES:     drawGames();     break;
-      case STATE_WIFI:      drawWifi();      break;
-      case STATE_TICTACTOE: drawTicTacToe(); break;
-    }
-
+    drawCurrentScreen();
     checkButtons();
-
   } while (display.nextPage());
 
   fastUpdate = false;
@@ -132,6 +150,116 @@ void refreshDisplay() {
       default: break;
     }
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  Power Management
+//
+//  Tiers, checked in priority order:
+//    1. Active   — no deep sleep, WiFi modem-sleep only, for
+//                  ACTIVE_TIMEOUT_MS after a button press or message.
+//    2. Low batt — wake every WAKE_INTERVAL_LOWBATT_S  (batt < LOW_BATT_PCT)
+//    3. Night    — wake every WAKE_INTERVAL_NIGHT_S    (00:00-08:00)
+//    4. Default  — wake every WAKE_INTERVAL_DEFAULT_S
+// ═══════════════════════════════════════════════════════════════
+
+RTC_DATA_ATTR bool clockSynced = false;  // NTP only needs to succeed once — RTC keeps ticking through deep sleep
+
+// True during 00:00–08:00. Relies on the RTC clock rather than a fresh
+// NTP call every wake, since the RTC keeps accurate time through deep sleep.
+bool isNightHours() {
+  time_t now = time(nullptr);
+  if (now < 100000) return false;  // clock never synced yet — assume day
+  struct tm t;
+  localtime_r(&now, &t);
+  return t.tm_hour >= NIGHT_START_HOUR && t.tm_hour < NIGHT_END_HOUR;
+}
+
+void syncNightClock() {
+  if (clockSynced) return;
+  configTzTime(TZ_STRING, "pool.ntp.org", "time.nist.gov");
+  struct tm t;
+  if (getLocalTime(&t, 2000)) clockSynced = true;  // 2s best-effort, don't hang the boot on a bad network
+}
+
+unsigned long currentWakeIntervalS() {
+  if (batteryPct < LOW_BATT_PCT) return WAKE_INTERVAL_LOWBATT_S;
+  if (isNightHours())            return WAKE_INTERVAL_NIGHT_S;
+  return WAKE_INTERVAL_DEFAULT_S;
+}
+
+void refreshStatusBarOnly() {
+  display.setPartialWindow(0, 0, SCREEN_W, SCREEN_H);
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+    drawStatusBar(batteryPct);
+    drawCurrentScreen();
+    checkButtons();  // don't miss a press while this partial window is transferring
+  } while (display.nextPage());
+}
+
+// WiFi with a hard timeout instead of WiFiManager's blocking portal —
+// credentials are already saved by now, this is just "is the radio good".
+bool quickWifiConnect() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin();
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
+    delay(50);
+  }
+  return WiFi.status() == WL_CONNECTED;
+}
+
+// Never returns — reboots the chip into deep sleep, waking on a timer
+// or on any button press.
+void enterDeepSleep(unsigned long seconds) {
+  WiFi.disconnect(true);
+  esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
+  esp_deep_sleep_enable_gpio_wakeup(
+    (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT) | (1ULL << BTN_RIGHT),
+    ESP_GPIO_WAKEUP_GPIO_LOW
+  );
+  esp_deep_sleep_start();
+}
+
+//Connects just long enough to catch a pending message repaint the battery readout and
+// go straight back to sleep.
+bool quickCheckAndMaybeSleep() {
+  updateBattery();
+
+  bool gotMessage = false;
+  if (quickWifiConnect()) {
+    wifiClient.setInsecure();
+    if (connectMQTT()) {
+      unsigned long start = millis();
+      while (millis() - start < MQTT_LISTEN_WINDOW_MS) {
+        mqttClient.loop();
+        if (hasUnreadMessage) { gotMessage = true; break; }
+        delay(10);  // don't spin the CPU at full power for this whole window
+      }
+    }
+  }
+
+  if (gotMessage) return false;
+
+  currentState = STATE_HOME;
+  refreshStatusBarOnly();
+  enterDeepSleep(currentWakeIntervalS());
+  return true;  // unreachable
+}
+
+bool sleepWouldLoseState() {
+  return inTicTacToe || TTT_pendingStart || messageLen > 0;
+}
+
+// Called every loop() tick. Drops to deep sleep once the active window
+// (ACTIVE_TIMEOUT_MS since the last button press or message) has elapsed.
+void handlePowerState() {
+  if (millis() - lastActivityMillis < ACTIVE_TIMEOUT_MS) return;
+  if (sleepWouldLoseState()) return;
+  enterDeepSleep(currentWakeIntervalS());
 }
 
 
@@ -172,6 +300,8 @@ void gameReqHandler(char* payload) {
 
 void onMessageReceived(char* topic, byte* payload, unsigned int length) {
   payload[length] = '\0';
+  markActivity();  // any inbound message keeps the device awake to let the user respond
+
   const size_t idLen = strlen(BEEPER_ID);
   char* subTopic = topic + idLen;
 
