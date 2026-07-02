@@ -216,11 +216,10 @@ bool quickWifiConnect() {
 // or on any button press.
 void enterDeepSleep(unsigned long seconds) {
   WiFi.disconnect(true);
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // Keeps the buttons powered during sleep.
   esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
-  esp_deep_sleep_enable_gpio_wakeup(
-    (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT) | (1ULL << BTN_RIGHT),
-    ESP_GPIO_WAKEUP_GPIO_LOW
-  );
+  uint64_t sleep_wake_mask = (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT);
+  esp_deep_sleep_enable_gpio_wakeup(sleep_wake_mask, ESP_GPIO_WAKEUP_GPIO_LOW);
   esp_deep_sleep_start();
 }
 
