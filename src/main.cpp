@@ -111,6 +111,7 @@ void setup() {
 //  LOOP
 // ═══════════════════════════════════════════════════════════════
 static unsigned long lastStatusBarRefresh = 0;
+static unsigned long lastBatteryRead      = 0;
 static unsigned long now;
 
 void loop() {
@@ -124,12 +125,12 @@ void loop() {
   if (currentWifiState != lastWifiState || currentMqttState != lastMqttState) {
     lastWifiState = currentWifiState;
     lastMqttState = currentMqttState;
-    needRefresh = true; // Connection changed, update the icons visually!
+    needRefresh = true;
   }
 
   if (!currentWifiState) {
     // WiFi is down. Hardware is auto-reconnecting.
-  } 
+  }
   else if (!currentMqttState) {
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;
@@ -137,15 +138,16 @@ void loop() {
         lastReconnectAttempt = 0;
       }
     }
-  } 
+  }
   else {
-    // Everything is healthy, process incoming/outgoing packets
     mqttClient.loop();
   }
 
-  updateBattery();
+  if (now - lastBatteryRead > BATTERY_READ_INTERVAL_MS) {
+    lastBatteryRead = now;
+    updateBattery();
+  }
 
-  // Auto-dismiss Sent screen.
   if (currentState == STATE_SENT && (millis() - sentEnteredAt >= SENT_DISPLAY_MS)) {
     currentState = STATE_HOME;
     needRefresh  = true;
@@ -155,12 +157,11 @@ void loop() {
   if (needRefresh) {
     needRefresh = false;
     refreshDisplay();
-    lastStatusBarRefresh = now;  // full refresh just redrew the status bar too
+    lastStatusBarRefresh = now;
   } else if (now - lastStatusBarRefresh > STATUS_REFRESH_MS) {
-    // Battery/WiFi/MQTT icons update on their own, independent of content.
     lastStatusBarRefresh = now;
     refreshStatusBarOnly();
   }
 
-  handlePowerState();  // drops to deep sleep once the active window has expired
+  handlePowerState();
 }

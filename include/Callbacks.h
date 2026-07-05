@@ -11,13 +11,21 @@
 //  Must be included AFTER all state files.
 // ═══════════════════════════════════════════════════════════════
 
+// Battery voltage, smoothed across calls (not just within one call) —
+// an e-ink refresh's current draw sags the rail for a moment, and a
+// single instant sample would show that dip as a jump in %.
+static float battVoltageEma = 0;  // mV, actual pack voltage (post-divider math)
+
 void updateBattery() {
   uint32_t sum = 0;
   for (int i = 0; i < 16; i++) sum += analogReadMilliVolts(A0);
-  // avg mV at ADC, ×2 for divider → vBat in mV
-  uint32_t vBat = (sum / 16) * 2;
-  // 3000–4200 mV range → 0–100%
-  batteryPct = (int)(((int)vBat - 3000) * 100 / 1200);
+  const float vBatSample = (sum / 16.0f) * BATTERY_DIVIDER_RATIO;
+
+  battVoltageEma = (battVoltageEma == 0)
+                     ? vBatSample
+                     : battVoltageEma + BATTERY_EMA_ALPHA * (vBatSample - battVoltageEma);
+
+  batteryPct = (int)((battVoltageEma - BATTERY_MIN_MV) * 100.0f / (BATTERY_MAX_MV - BATTERY_MIN_MV));
   batteryPct = constrain(batteryPct, 0, 100);
 }
 
@@ -139,7 +147,6 @@ void refreshDisplay() {
    if (pendingLeft || pendingMid || pendingRight) {
     bool l = pendingLeft, m = pendingMid, r = pendingRight;
     pendingLeft = pendingMid = pendingRight = false;
-    // dispatch manually
     switch (currentState) {
       case STATE_HOME:      handleHomeInput(l, m, r);       break;
       case STATE_INBOX:     handleInboxInput(l, m, r);      break;
@@ -166,11 +173,9 @@ void refreshDisplay() {
 
 RTC_DATA_ATTR bool clockSynced = false;  // NTP only needs to succeed once — RTC keeps ticking through deep sleep
 
-// True during 00:00–08:00. Relies on the RTC clock rather than a fresh
-// NTP call every wake, since the RTC keeps accurate time through deep sleep.
 bool isNightHours() {
   time_t now = time(nullptr);
-  if (now < 100000) return false;  // clock never synced yet — assume day
+  if (now < 100000) return false;
   struct tm t;
   localtime_r(&now, &t);
   return t.tm_hour >= NIGHT_START_HOUR && t.tm_hour < NIGHT_END_HOUR;
@@ -180,7 +185,7 @@ void syncNightClock() {
   if (clockSynced) return;
   configTzTime(TZ_STRING, "pool.ntp.org", "time.nist.gov");
   struct tm t;
-  if (getLocalTime(&t, 2000)) clockSynced = true;  // 2s best-effort, don't hang the boot on a bad network
+  if (getLocalTime(&t, 2000)) clockSynced = true;
 }
 
 unsigned long currentWakeIntervalS() {
@@ -196,7 +201,7 @@ void refreshStatusBarOnly() {
     display.fillScreen(GxEPD_WHITE);
     drawStatusBar(batteryPct);
     drawCurrentScreen();
-    checkButtons();  // don't miss a press while this partial window is transferring
+    checkButtons();
   } while (display.nextPage());
 }
 
@@ -212,19 +217,27 @@ bool quickWifiConnect() {
   return WiFi.status() == WL_CONNECTED;
 }
 
-// Never returns — reboots the chip into deep sleep, waking on a timer
-// or on any button press.
+// Never returns — drops the chip into deep sleep, waking on a timer
+// or on a BTN_LEFT / BTN_SELECT press.
 void enterDeepSleep(unsigned long seconds) {
   WiFi.disconnect(true);
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // Keeps the buttons powered during sleep.
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // keeps the button pull-ups powered during sleep
+
   esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
-  uint64_t sleep_wake_mask = (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT);
-  esp_deep_sleep_enable_gpio_wakeup(sleep_wake_mask, ESP_GPIO_WAKEUP_GPIO_LOW);
+
+  // ext1 routes wakeup through the RTC controller, which stays powered in
+  // deep sleep. esp_deep_sleep_enable_gpio_wakeup() uses the HP GPIO block
+  // instead, which powers off — that call silently never wakes the chip.
+  // Only GPIO0-7 are LP-capable, so BTN_RIGHT (GPIO21) must stay OUT of
+  // this mask — including it breaks the wakeup call entirely.
+  const uint64_t wakeMask = (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT);
+  esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_LOW);
+
   esp_deep_sleep_start();
 }
 
-//Connects just long enough to catch a pending message repaint the battery readout and
-// go straight back to sleep.
+//Connects just long enough to catch a pending message, repaint the battery
+// readout, and go straight back to sleep.
 bool quickCheckAndMaybeSleep() {
   updateBattery();
 
@@ -236,7 +249,7 @@ bool quickCheckAndMaybeSleep() {
       while (millis() - start < MQTT_LISTEN_WINDOW_MS) {
         mqttClient.loop();
         if (hasUnreadMessage) { gotMessage = true; break; }
-        delay(10);  // don't spin the CPU at full power for this whole window
+        delay(10);
       }
     }
   }
@@ -263,20 +276,14 @@ void handlePowerState() {
 
 
 // ── MQTT Callbacks ────────────────────────────────────────────
-// Handles the broad "<id>/games" channel — invite-level presence messages
-// (TTT_START / TTT_START_ACK / TTT_LEFT).
 void gameReqHandler(char* payload) {
   if (strcmp(payload, "TTT_START") == 0) {
     if (TTT_pendingStart) {
-      // Both sides pressed Play at the same moment — neither has seen the
-      // other's invite yet. Deterministic tiebreak so exactly one becomes
-      // initiator (X) and the other joins (O); see TTT_pendingStart usage.
       if (strcmp(BEEPER_ID, RECIVER_ID) < 0) TTT_becomeInitiator();
       else                                    TTT_joinAsOpponent();
     } else if (!inTicTacToe) {
-      TTT_hasOpponent = true;  // they invited us — show the notification dot
+      TTT_hasOpponent = true;
     }
-    // else: already in a confirmed game — stray message, ignore.
   } else if (strcmp(payload, "TTT_START_ACK") == 0) {
     if (TTT_pendingStart) TTT_becomeInitiator();
   } else if (strcmp(payload, "TTT_LEFT") == 0) {
@@ -299,7 +306,7 @@ void gameReqHandler(char* payload) {
 
 void onMessageReceived(char* topic, byte* payload, unsigned int length) {
   payload[length] = '\0';
-  markActivity();  // any inbound message keeps the device awake to let the user respond
+  markActivity();
 
   const size_t idLen = strlen(BEEPER_ID);
   char* subTopic = topic + idLen;

@@ -73,6 +73,14 @@
 #define HOLD_DELAY_MS    500
 #define HOLD_REPEAT_MS   150
 
+// ── Battery Sensing ───────────────────────────────────────────
+//   2×200kΩ divider (1:2) on A0
+#define BATTERY_DIVIDER_RATIO     2.0f
+#define BATTERY_MIN_MV            3000UL   // 0%
+#define BATTERY_MAX_MV            4200UL   // 100%
+#define BATTERY_READ_INTERVAL_MS  3000UL   // how often we sample the ADC
+#define BATTERY_EMA_ALPHA         0.15f
+
 // ── Power Management ──────────────────────────────────────────
 //   Active   : awake, WiFi modem-sleep only, for ACTIVE_TIMEOUT_MS
 //              after the last button press or message.
