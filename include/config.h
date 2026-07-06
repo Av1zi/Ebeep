@@ -83,10 +83,9 @@
 
 // ── Power Management ──────────────────────────────────────────
 //   Active   : awake, WiFi modem-sleep only, for ACTIVE_TIMEOUT_MS
-//              after the last button press or message.
 //   Default  : deep sleep, wake every WAKE_INTERVAL_DEFAULT_S.
 //   Night    : deep sleep, wake every WAKE_INTERVAL_NIGHT_S
-//   Low batt : deep sleep, wake every WAKE_INTERVAL_LOWBATT_S (batt < LOW_BATT_PCT) — wins over night.
+//   Low batt : deep sleep, wake every WAKE_INTERVAL_LOWBATT_S (batt < LOW_BATT_PCT).
 #define WAKE_INTERVAL_DEFAULT_S   30UL
 #define WAKE_INTERVAL_NIGHT_S     120UL
 #define WAKE_INTERVAL_LOWBATT_S   120UL
@@ -104,6 +103,7 @@
 // Credentials come from secret.h (not checked into VCS).
 // AP_pass: leave as "" in secret.h for an open access point.
 #define AP_NAME   "Ebeep_1_config"
+#define WIFI_RECONNECT_GRACE_MS   (10UL * 1000)
 
 constexpr const char* MQTT_SERVER_ADDR  = MQTT_SERVER;
 constexpr uint16_t    MQTT_SERVER_PORT  = MQTT_PORT;
@@ -114,8 +114,8 @@ constexpr const char* RECIVER_ID  = "Beeper_2";
 constexpr const char* MQTT_USERNAME_STR = MQTT_USERNAME;
 constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
 
-// Defined in main.cpp — forward-declared so PowerState.h can call them
-// before their definitions appear later in the same translation unit.
+
+// Defined in main.cpp but declared here so PowerState.h can call them
 void connectWifi();
 bool connectMQTT();
 

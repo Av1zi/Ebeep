@@ -11,9 +11,6 @@
 //  Must be included AFTER all state files.
 // ═══════════════════════════════════════════════════════════════
 
-// Battery voltage, smoothed across calls (not just within one call) —
-// an e-ink refresh's current draw sags the rail for a moment, and a
-// single instant sample would show that dip as a jump in %.
 static float battVoltageEma = 0;  // mV, actual pack voltage (post-divider math)
 
 void updateBattery() {
@@ -224,12 +221,6 @@ void enterDeepSleep(unsigned long seconds) {
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // keeps the button pull-ups powered during sleep
 
   esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
-
-  // ext1 routes wakeup through the RTC controller, which stays powered in
-  // deep sleep. esp_deep_sleep_enable_gpio_wakeup() uses the HP GPIO block
-  // instead, which powers off — that call silently never wakes the chip.
-  // Only GPIO0-7 are LP-capable, so BTN_RIGHT (GPIO21) must stay OUT of
-  // this mask — including it breaks the wakeup call entirely.
   const uint64_t wakeMask = (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT);
   esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_LOW);
 

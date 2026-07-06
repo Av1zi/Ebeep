@@ -1,14 +1,7 @@
-# Ebeep
 
-> A pair of handmade wireless devices that let two people send notes to each other across any distance, no phone required!*
+# What is Ebeep?
 
----
-
-## What is Ebeep?
-
-Ebeep is a DIY electronics project: two small standalone devices, one for you and one for someone you love. Each device has an e-ink display, three mechanical buttons, and a buzzer. You type a message on yours, press send — and a few seconds later, their device buzzes, lights up, and shows your words. No app, no phone, no subscription. Just a little box that sits on a desk and occasionally says *I love you*.
-
-The devices communicate over WiFi via MQTT, meaning they work across any distance — same room, different city, different country.
+Ebeep is a DIY electronics project: two standalone devices that can talk to eachother over wifi and play games :)
 
 ---
 
@@ -27,49 +20,35 @@ The devices communicate over WiFi via MQTT, meaning they work across any distanc
 
 | Component | Part |
 |---|---|
-| Microcontroller | ESP32 |
+| Microcontroller | xiao ESP32C6 |
 | Display | Waveshare e-ink (2.9") |
-| Battery | 3.7V LiPo, 3000mAh |
+| Battery | 3.7V LiPo, 3000mAh & 200K resistors |
 | Buttons | 3× low profile mechanical keyboard switches |
-| Buzzer | Passive piezo buzzer |
 
 ---
 
-## How It Works
+## How It Works?
 
 ### Communication
-Both devices connect to WiFi and talk to a private **MQTT broker**. Each device subscribes to its own topic and publishes to the other's. Messages are JSON payloads containing the text and sender ID.
+Both devices connect to WiFi and talk to a private **MQTT broker**. Each device subscribes to its own topic and publishes to the other's.
 
 ### WiFi Setup (captive portal)
-On first boot, the device creates a hotspot called `Ebeep-Setup`. Connect to it from any phone and a setup page appears automatically — pick your WiFi network, enter the password, done. Credentials are saved to flash and the device never asks again.
+On first boot, the device creates a hotspot called `Ebeep-Setup`. Connect to it from any phone and a setup page appears automatically pick your WiFi network, enter the password, done. Credentials are saved to flash and the device never asks again unless its unable to connect to the wifi.
 
 ### Typing Interface
 Messages are typed using a 3-button scrollable alphabet:
-- **Left / Right** — scroll through characters (`_ A B C D E F G H I ...`)
-- **Confirm** — select the current character
-- **Two spaces in a row** — sends the message
-
----
-
-## Project Status
-
-- [x] Mockup version for the UI (finishing touches)
-- [ ] Wiring design complete
-- [X] MQTT publish/subscribe
-- [X] WiFiManager captive portal integration
-- [X] Typing UI with scrollable alphabet
-- [x] Full screen state machine
-- [ ] Buzzer melodies
-- [X] Enclosure / physical build
+- **Left / Right** - scroll through characters (`_ A B C D E F G H I ...`)
+- **Confirm** - select the current character
+- **Two spaces in a row** - sends the message
+- **Del** - deletes a character \ exits the screen if there is no characters to delete
 
 ---
 
 ## Why "Ebeep"?
 
-**E** for e-ink. **Beep** for the little buzz it makes when someone is thinking of you (also for beeper).
+**E** for e-ink. **Beep** for beeper becuse this device is inspired by a beeper.
 
 ---
 
 ## License
-
-GPL-3.0 license — do whatever you want with it, just make sure its open source as well.
+  do whatever you want with it, just make sure its open source as well.

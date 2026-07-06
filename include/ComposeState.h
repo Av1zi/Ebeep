@@ -12,8 +12,6 @@
 //  At MAX_MSG_LEN: only DEL and double-space (send) work.
 // ═══════════════════════════════════════════════════════════════
 
-// Frequency-ordered: space first for fastest access.
-// DEL is a virtual slot past the end — not a stored character.
 static const char ALPHABET[] PROGMEM = " ABCDEFGHIJKLMNOPQRSTUVWXYZ.!?<3";
 static const uint8_t ALPHABET_SIZE   = sizeof(ALPHABET) - 1;  // excludes '\0'
 static const uint8_t DEL_IDX         = ALPHABET_SIZE;
@@ -131,9 +129,7 @@ void handleComposeInput(bool leftPressed, bool midPressed, bool rightPressed) {
     } else {
       const char ch = (char)pgm_read_byte(&ALPHABET[currentLetterIdx]);
 
-      // Double-space → send (allowed even at limit — last char must already be space,
-      // but at limit you can't add one, so handle: if at limit and last char is space,
-      // a second space press sends. We check BEFORE the length guard.)
+      // Double-space = send (allowed even at limit last char must already be space)
       if (ch == ' ' && messageLen > 0 && typedMessage[messageLen - 1] == ' ') {
         typedMessage[--messageLen] = '\0';   // strip trailing space
         mqttClient.publish((String(RECIVER_ID) + "/inbox").c_str(), typedMessage);
@@ -142,7 +138,7 @@ void handleComposeInput(bool leftPressed, bool midPressed, bool rightPressed) {
         needRefresh   = true;
         fastUpdate    = false;
       } else if (messageLen >= MAX_MSG_LEN) {
-        // At limit — only DEL and double-space (above) work; ignore everything else.
+        // At limit - only DEL and send work. ignore everything else.
         return;
       } else {
         typedMessage[messageLen++] = ch;

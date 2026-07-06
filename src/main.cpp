@@ -66,6 +66,8 @@ void setup() {
   Serial.begin(115200);
   delay(2000);
   Serial.println("=== Ebeep Boot ===");
+  currentState = STATE_WIFI;
+  needRefresh  = true;
 
   pinMode(EPD_CS,   OUTPUT);
   pinMode(EPD_DC,   OUTPUT);
@@ -89,8 +91,6 @@ void setup() {
 
   // ── WiFi ─────────────────────────────────────────────────
   if (WiFi.status() != WL_CONNECTED) {
-    currentState = STATE_WIFI;
-    needRefresh  = true;
     //wm.resetSettings();  // uncomment to erase settings
     connectWifi();
     wifiClient.setInsecure();
@@ -113,6 +113,7 @@ void setup() {
 static unsigned long lastStatusBarRefresh = 0;
 static unsigned long lastBatteryRead      = 0;
 static unsigned long now;
+unsigned long wifiLostAt = 0;
 
 void loop() {
   now = millis();
@@ -122,10 +123,29 @@ void loop() {
   bool currentWifiState = (WiFi.status() == WL_CONNECTED);
   bool currentMqttState = mqttClient.connected();
 
-  if (currentWifiState != lastWifiState || currentMqttState != lastMqttState) {
+  if (currentWifiState != lastWifiState) {
     lastWifiState = currentWifiState;
+    if (!currentWifiState) {
+      wifiLostAt = now;                  // outage just started
+    } else if (currentState == STATE_WIFI) {
+      currentState = STATE_HOME;         // reconnected — leave the wifi screen
+      needRefresh  = true;
+      fastUpdate   = false;
+    }
+    needRefresh = true;
+  }
+  if (currentMqttState != lastMqttState) {
     lastMqttState = currentMqttState;
     needRefresh = true;
+  }
+
+  // Only take over the screen for outages longer than a brief hiccup,
+  // and never mid-message or mid-game.
+  if (!currentWifiState && currentState != STATE_WIFI &&
+      now - wifiLostAt > WIFI_RECONNECT_GRACE_MS && !sleepWouldLoseState()) {
+    currentState = STATE_WIFI;
+    needRefresh  = true;
+    fastUpdate   = false;
   }
 
   if (!currentWifiState) {
