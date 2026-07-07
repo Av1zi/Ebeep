@@ -95,3 +95,15 @@ void drawButtonHints(const char* left, const char* mid, const char* right) {
   drawCenteredText(COL2_CX, BTN_TEXT_Y, mid,   &FreeMonoBold9pt7b);
   drawCenteredText(COL3_CX, BTN_TEXT_Y, right, &FreeMonoBold9pt7b);
 }
+
+// Shared "Yes/No" confirm popup, drawn centered over whatever's already on screen.
+void drawConfirmPopup(const char* prompt) {
+  constexpr int16_t pw = 210, ph = 48;
+  constexpr int16_t px = (SCREEN_W - pw) / 2;
+  const     int16_t py = CONTENT_Y + (CONTENT_H - ph) / 2;
+  display.fillRect(px,     py,     pw,     ph,     GxEPD_WHITE);
+  display.drawRect(px,     py,     pw,     ph,     GxEPD_BLACK);
+  display.drawRect(px + 2, py + 2, pw - 4, ph - 4, GxEPD_BLACK);
+  drawCenteredText(SCREEN_W / 2, py + 30, prompt, &FreeMonoBold9pt7b);
+  drawButtonHints("No", "", "Yes");
+}

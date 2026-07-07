@@ -44,13 +44,21 @@ void connectWifi(){
   lastWifiState = true;
 }
 
-// Rewritten to be Non-Blocking
+// Topics never change at runtime (BEEPER_ID is fixed) — build once instead
+// of allocating a String on every single reconnect attempt.
+static char INBOX_TOPIC[24] = "";
+static char GAMES_TOPIC[24] = "";
+
 bool connectMQTT(){
+  if (INBOX_TOPIC[0] == '\0') {
+    snprintf(INBOX_TOPIC, sizeof(INBOX_TOPIC), "%s/inbox", BEEPER_ID);
+    snprintf(GAMES_TOPIC, sizeof(GAMES_TOPIC), "%s/games", BEEPER_ID);
+  }
   Serial.print("MQTT connect... ");
   if (mqttClient.connect("Ebeep_Device", MQTT_USERNAME_STR, MQTT_PASSWORD_STR)) {
     Serial.println("OK");
-    mqttClient.subscribe((String(BEEPER_ID) + "/inbox").c_str());
-    mqttClient.subscribe((String(BEEPER_ID) + "/games").c_str());
+    mqttClient.subscribe(INBOX_TOPIC);
+    mqttClient.subscribe(GAMES_TOPIC);
     lastMqttState = true;
     return true;
   } else {
@@ -91,10 +99,14 @@ void setup() {
 
   // ── WiFi ─────────────────────────────────────────────────
   if (WiFi.status() != WL_CONNECTED) {
+    refreshDisplay();   // paint "Connecting..." now — connectWifi() blocks below
+    needRefresh = false;
     //wm.resetSettings();  // uncomment to erase settings
     connectWifi();
-    wifiClient.setInsecure();
   }
+  wifiClient.setInsecure();
+  wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);        // bounds TCP/TLS connect — a bad network can't stall loop() for long anymore
+  mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
   WiFi.setAutoReconnect(true); // Let hardware handle background wifi reconnection
   WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
@@ -122,27 +134,22 @@ void loop() {
 
   bool currentWifiState = (WiFi.status() == WL_CONNECTED);
   bool currentMqttState = mqttClient.connected();
+  bool iconsStale = (currentWifiState != lastWifiState) || (currentMqttState != lastMqttState);
 
   if (currentWifiState != lastWifiState) {
     lastWifiState = currentWifiState;
-    if (!currentWifiState) {
-      wifiLostAt = now;                  // outage just started
-    } else if (currentState == STATE_WIFI) {
-      currentState = STATE_HOME;         // reconnected — leave the wifi screen
-      needRefresh  = true;
-      fastUpdate   = false;
-    }
-    needRefresh = true;
+    if (!currentWifiState) wifiLostAt = now;   // outage just started
   }
-  if (currentMqttState != lastMqttState) {
-    lastMqttState = currentMqttState;
-    needRefresh = true;
-  }
+  lastMqttState = currentMqttState;
 
-  // Only take over the screen for outages longer than a brief hiccup,
-  // and never mid-message or mid-game.
-  if (!currentWifiState && currentState != STATE_WIFI &&
-      now - wifiLostAt > WIFI_RECONNECT_GRACE_MS && !sleepWouldLoseState()) {
+  const bool fullyConnected = currentWifiState && currentMqttState;
+
+  if (currentState == STATE_WIFI && fullyConnected) {
+    currentState = STATE_HOME;
+    needRefresh  = true;
+    fastUpdate   = false;
+  } else if (currentState != STATE_WIFI && !currentWifiState &&
+             now - wifiLostAt > WIFI_RECONNECT_GRACE_MS && !sleepWouldLoseState()) {
     currentState = STATE_WIFI;
     needRefresh  = true;
     fastUpdate   = false;
@@ -178,9 +185,9 @@ void loop() {
     needRefresh = false;
     refreshDisplay();
     lastStatusBarRefresh = now;
-  } else if (now - lastStatusBarRefresh > STATUS_REFRESH_MS) {
+  } else if (iconsStale || now - lastStatusBarRefresh > STATUS_REFRESH_MS) {
     lastStatusBarRefresh = now;
-    refreshStatusBarOnly();
+    refreshStatusBarOnly();   // icons only — no reason to redraw the whole screen for this
   }
 
   handlePowerState();

@@ -14,9 +14,11 @@
 static float battVoltageEma = 0;  // mV, actual pack voltage (post-divider math)
 
 void updateBattery() {
+  // 8 samples is enough noise averaging on its own — the EMA below does
+  // the real smoothing across calls, so we don't burn extra ADC time here.
   uint32_t sum = 0;
-  for (int i = 0; i < 16; i++) sum += analogReadMilliVolts(A0);
-  const float vBatSample = (sum / 16.0f) * BATTERY_DIVIDER_RATIO;
+  for (int i = 0; i < 8; i++) sum += analogReadMilliVolts(A0);
+  const float vBatSample = (sum / 8.0f) * BATTERY_DIVIDER_RATIO;
 
   battVoltageEma = (battVoltageEma == 0)
                      ? vBatSample
@@ -169,6 +171,7 @@ void refreshDisplay() {
 // ═══════════════════════════════════════════════════════════════
 
 RTC_DATA_ATTR bool clockSynced = false;  // NTP only needs to succeed once — RTC keeps ticking through deep sleep
+RTC_DATA_ATTR bool wifiWasOk   = true;   // persists across deep sleep — lets quickCheckAndMaybeSleep() tell if connectivity flipped since the last wake
 
 bool isNightHours() {
   time_t now = time(nullptr);
@@ -191,13 +194,15 @@ unsigned long currentWakeIntervalS() {
   return WAKE_INTERVAL_DEFAULT_S;
 }
 
+// Cheap periodic refresh (battery %, WiFi/MQTT icons only). Content is left
+// alone — it only ever changes via an explicit needRefresh trigger, never
+// silently, so redrawing it here on a timer would be wasted e-ink time and power.
 void refreshStatusBarOnly() {
-  display.setPartialWindow(0, 0, SCREEN_W, SCREEN_H);
+  display.setPartialWindow(0, 0, SCREEN_W, DIVIDER_TOP + 1);
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
     drawStatusBar(batteryPct);
-    drawCurrentScreen();
     checkButtons();
   } while (display.nextPage());
 }
@@ -227,14 +232,15 @@ void enterDeepSleep(unsigned long seconds) {
   esp_deep_sleep_start();
 }
 
-//Connects just long enough to catch a pending message, repaint the battery
-// readout, and go straight back to sleep.
 bool quickCheckAndMaybeSleep() {
   updateBattery();
 
   bool gotMessage = false;
-  if (quickWifiConnect()) {
+  bool wifiOk = quickWifiConnect();
+  if (wifiOk) {
     wifiClient.setInsecure();
+    wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);
+    mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
     if (connectMQTT()) {
       unsigned long start = millis();
       while (millis() - start < MQTT_LISTEN_WINDOW_MS) {
@@ -244,11 +250,21 @@ bool quickCheckAndMaybeSleep() {
       }
     }
   }
-
+  
   if (gotMessage) return false;
 
-  currentState = STATE_HOME;
-  refreshStatusBarOnly();
+  currentState = wifiOk ? STATE_HOME : STATE_WIFI;
+
+  if (wifiOk != wifiWasOk) {
+    // Connectivity flipped since the last wake — worth a real redraw so the
+    // WiFi screen (or Home) actually shows, not just a stale battery %.
+    fastUpdate = false;
+    refreshDisplay();
+  } else {
+    refreshStatusBarOnly();
+  }
+  wifiWasOk = wifiOk;
+
   enterDeepSleep(currentWakeIntervalS());
   return true;  // unreachable
 }
@@ -268,11 +284,20 @@ void handlePowerState() {
 
 // ── MQTT Callbacks ────────────────────────────────────────────
 void gameReqHandler(char* payload) {
-  if (strcmp(payload, "TTT_START") == 0) {
+if (strcmp(payload, "TTT_START") == 0) {
     if (TTT_pendingStart) {
       if (strcmp(BEEPER_ID, RECIVER_ID) < 0) TTT_becomeInitiator();
       else                                    TTT_joinAsOpponent();
-    } else if (!inTicTacToe) {
+    } else if (inTicTacToe) {
+      inTicTacToe     = false;
+      TTT_hasOpponent = true;
+      TTT_flags       = TTT_NONE;
+      if (currentState == STATE_TICTACTOE) {
+        currentState = STATE_HOME;
+        needRefresh  = true;
+        fastUpdate   = false;
+      }
+    } else {
       TTT_hasOpponent = true;
     }
   } else if (strcmp(payload, "TTT_START_ACK") == 0) {

@@ -15,22 +15,13 @@
 static const char ALPHABET[] PROGMEM = " ABCDEFGHIJKLMNOPQRSTUVWXYZ.!?<3";
 static const uint8_t ALPHABET_SIZE   = sizeof(ALPHABET) - 1;  // excludes '\0'
 static const uint8_t DEL_IDX         = ALPHABET_SIZE;
-static const uint8_t TOTAL_ENTRIES   = ALPHABET_SIZE + 1;
 
 // ─────────────────────────────────────────────────────────────
 void drawCompose() {
 
   // ── Leave-confirm popup ───────────────────────────────────
-  if (confirmLeaveCompose) {
-    constexpr int16_t pw = 210, ph = 48;
-    constexpr int16_t px = (SCREEN_W - pw) / 2;
-    const     int16_t py = CONTENT_Y + (CONTENT_H - ph) / 2;
-
-    display.fillRect(px,     py,     pw,     ph,     GxEPD_WHITE);
-    display.drawRect(px,     py,     pw,     ph,     GxEPD_BLACK);
-    display.drawRect(px + 2, py + 2, pw - 4, ph - 4, GxEPD_BLACK);
-    drawCenteredText(SCREEN_W / 2, py + 30, "Quit writing?", &FreeMonoBold9pt7b);
-    drawButtonHints("No", "", "Yes");
+if (confirmLeaveCompose) {
+    drawConfirmPopup("Quit writing?");
     return;
   }
 
@@ -132,7 +123,9 @@ void handleComposeInput(bool leftPressed, bool midPressed, bool rightPressed) {
       // Double-space = send (allowed even at limit last char must already be space)
       if (ch == ' ' && messageLen > 0 && typedMessage[messageLen - 1] == ' ') {
         typedMessage[--messageLen] = '\0';   // strip trailing space
-        mqttClient.publish((String(RECIVER_ID) + "/inbox").c_str(), typedMessage);
+        static char inboxTopic[24] = "";     // built once — RECIVER_ID never changes
+        if (inboxTopic[0] == '\0') snprintf(inboxTopic, sizeof(inboxTopic), "%s/inbox", RECIVER_ID);
+        mqttClient.publish(inboxTopic, typedMessage);
         currentState  = STATE_SENT;
         sentEnteredAt = millis();
         needRefresh   = true;

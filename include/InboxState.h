@@ -25,6 +25,7 @@ void handleInboxInput(bool leftPressed, bool midPressed, bool rightPressed) {
     currentState = STATE_HOME;
     needRefresh  = true;
   } else if (rightPressed) {
+    if (!mqttClient.connected()) { currentState = STATE_WIFI; needRefresh = true; return; }
     typedMessage[0]  = '\0';
     messageLen       = 0;
     currentLetterIdx = 0;

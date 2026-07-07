@@ -38,12 +38,14 @@ void handleHomeInput(bool leftPressed, bool midPressed, bool rightPressed) {
     currentState     = STATE_INBOX;
     needRefresh      = true;
   } else if (midPressed) {
+    if (!mqttClient.connected()) { currentState = STATE_WIFI; needRefresh = true; return; }
     typedMessage[0]  = '\0';
     messageLen       = 0;
     currentLetterIdx = 0;
     currentState     = STATE_COMPOSE;
     needRefresh      = true;
   } else if (rightPressed) {
+    if (!mqttClient.connected()) { currentState = STATE_WIFI; needRefresh = true; return; }
     currentState = STATE_GAMES;
     needRefresh  = true;
   }

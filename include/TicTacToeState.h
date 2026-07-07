@@ -21,10 +21,14 @@ uint8_t TTT_flags = TTT_NONE;
 #define TTT_I_WANT_REMATCH     (TTT_flags & 0x04)
 #define TTT_CONFIRM_LEAVE      (TTT_flags & 0x10)
 
-// Cached MQTT topics — built once instead of allocating a String every publish.
-static String TTT_topicOut;      // "<RECIVER_ID>/games/TTT"
-static String TTT_topicGameOut;  // "<RECIVER_ID>/games"
-static String TTT_topicIn;       // "<BEEPER_ID>/games/TTT"
+// Cached MQTT topics as fixed buffers, built once (BEEPER_ID/RECIVER_ID are
+// compile-time constants — a String rebuild every game entry/move/reconnect
+// was pure heap churn, and heap fragmentation is exactly the kind of thing
+// that causes long-uptime hangs on an ESP32).
+static char TTT_topicOut[32];      // "<RECIVER_ID>/games/TTT"
+static char TTT_topicGameOut[32];  // "<RECIVER_ID>/games"
+static char TTT_topicIn[32];       // "<BEEPER_ID>/games/TTT"
+static bool TTT_topicsBuilt = false;
 
 // Square cells: size is the smaller of the two possible dimensions
 // divided by 3, with a fixed offset to center the board
@@ -106,16 +110,9 @@ void drawTicTacToe() {
   }
 
   // ── Leave-confirm popup (drawn over the live board) ───────
-  if (TTT_CONFIRM_LEAVE) {
+if (TTT_CONFIRM_LEAVE) {
     TTT_drawBoard();
-    constexpr int16_t pw = 210, ph = 48;
-    constexpr int16_t px = (SCREEN_W - pw) / 2;
-    const     int16_t py = CONTENT_Y + (CONTENT_H - ph) / 2;
-    display.fillRect(px,     py,     pw,     ph,     GxEPD_WHITE);
-    display.drawRect(px,     py,     pw,     ph,     GxEPD_BLACK);
-    display.drawRect(px + 2, py + 2, pw - 4, ph - 4, GxEPD_BLACK);
-    drawCenteredText(SCREEN_W / 2, py + 30, "Quit game?", &FreeMonoBold9pt7b);
-    drawButtonHints("No", "", "Yes");
+    drawConfirmPopup("Quit game?");
     return;
   }
 
@@ -187,7 +184,7 @@ void TTT_joinAsOpponent() {
   TTT_myTurn       = false;
   TTT_pendingStart = false;
   TTT_hasOpponent  = true;
-  mqttClient.publish(TTT_topicGameOut.c_str(), "TTT_START_ACK");
+  mqttClient.publish(TTT_topicGameOut, "TTT_START_ACK");
   startGameTTT();
 }
 
@@ -202,13 +199,15 @@ void TTT_becomeInitiator() {
 }
 
 void enterTicTacToe() {
-  // Build topic strings once per game session rather than per publish.
-  TTT_topicOut     = String(RECIVER_ID) + "/games/TTT";
-  TTT_topicGameOut = String(RECIVER_ID) + "/games";
-  TTT_topicIn      = String(BEEPER_ID)  + "/games/TTT";
+  if (!TTT_topicsBuilt) {   // BEEPER_ID/RECIVER_ID never change — build these once, ever
+    snprintf(TTT_topicOut,     sizeof(TTT_topicOut),     "%s/games/TTT", RECIVER_ID);
+    snprintf(TTT_topicGameOut, sizeof(TTT_topicGameOut), "%s/games",     RECIVER_ID);
+    snprintf(TTT_topicIn,      sizeof(TTT_topicIn),      "%s/games/TTT", BEEPER_ID);
+    TTT_topicsBuilt = true;
+  }
 
   TTT_resetBoard();
-  mqttClient.subscribe(TTT_topicIn.c_str());
+  mqttClient.subscribe(TTT_topicIn);
 
   if (TTT_hasOpponent) {
     // They invited us first (gameReqHandler already saw their TTT_START) — join now.
@@ -216,7 +215,7 @@ void enterTicTacToe() {
   } else {
     TTT_pendingStart = true;
     needRefresh      = true;
-    mqttClient.publish(TTT_topicGameOut.c_str(), "TTT_START");
+    mqttClient.publish(TTT_topicGameOut, "TTT_START");
   }
 }
 
@@ -232,7 +231,7 @@ void TTT_startRematch(bool iGoFirst) {
 void TTT_requestRematch() {
   if (TTT_I_WANT_REMATCH) return;  // already requested
   TTT_flags |= 0x04;
-  mqttClient.publish(TTT_topicOut.c_str(), "TTT_REMATCH");
+  mqttClient.publish(TTT_topicOut, "TTT_REMATCH");
   needRefresh = true;
   fastUpdate  = true;
 }
@@ -249,10 +248,10 @@ void checkTicTacToeMessages(char* payload) {
     if (TTT_I_WANT_REMATCH) {
       TTT_startRematch(strcmp(BEEPER_ID, RECIVER_ID) < 0);
     } else {
-      mqttClient.publish(TTT_topicOut.c_str(), "TTT_REMATCH_ACK");
+      mqttClient.publish(TTT_topicOut, "TTT_REMATCH_ACK");
       TTT_startRematch(false);
     }
-  } else if (payload[1] == ',' && inTicTacToe && !TTT_myTurn) {  // "R,C..." — just check the comma
+  } else if (strlen(payload) >= 3 && payload[1] == ',' && inTicTacToe && !TTT_myTurn) {  // "R,C" move
     const int8_t row = payload[0] - '0';
     const int8_t col = payload[2] - '0';
     if (row >= 0 && row < 3 && col >= 0 && col < 3) {
@@ -270,8 +269,8 @@ void checkTicTacToeMessages(char* payload) {
 void leaveTicTacToe() {
   // Sent on the broad "/games" channel (not "/games/TTT") so it reaches the
   // opponent even if they haven't joined yet and never subscribed to TTT's
-  mqttClient.publish(TTT_topicGameOut.c_str(), "TTT_LEFT");
-  mqttClient.unsubscribe(TTT_topicIn.c_str());
+  mqttClient.publish(TTT_topicGameOut, "TTT_LEFT");
+  mqttClient.unsubscribe(TTT_topicIn);
   inTicTacToe      = false;
   TTT_pendingStart = false;
   TTT_hasOpponent  = false;
@@ -315,7 +314,9 @@ void handleTicTacToeInput(bool leftPressed, bool midPressed, bool rightPressed) 
     TTT_board[TTT_selected] = TTT_SYMBOL;
     TTT_myTurn = false;
     const int8_t row = TTT_selected / 3, col = TTT_selected % 3;
-    mqttClient.publish(TTT_topicOut.c_str(), (String(row) + "," + String(col)).c_str());
+    char movePayload[4];
+    snprintf(movePayload, sizeof(movePayload), "%d,%d", row, col);
+    mqttClient.publish(TTT_topicOut, movePayload);
     TTT_evaluateOutcome();
   } else if (rightPressed) { // Advance to next empty cell, skipping occupied ones
     int8_t next = (TTT_selected + 1) % 9;
