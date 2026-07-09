@@ -35,7 +35,7 @@ bool lastMqttState = false;
 
 void connectWifi(){
   if (sizeof(HOTSPOT_PASSWORD) > 1) {
-    wm.autoConnect(AP_NAME, HOTSPOT_PASSWORD);
+    wm.autoConnect(AP_NAME, AP_password);
   } else {
     wm.autoConnect(AP_NAME);
   }
@@ -55,7 +55,7 @@ bool connectMQTT(){
     snprintf(GAMES_TOPIC, sizeof(GAMES_TOPIC), "%s/games", BEEPER_ID);
   }
   Serial.print("MQTT connect... ");
-  if (mqttClient.connect("Ebeep_Device", MQTT_USERNAME_STR, MQTT_PASSWORD_STR)) {
+  if (mqttClient.connect(BEEPER_ID, MQTT_USERNAME_STR, MQTT_PASSWORD_STR)) {
     Serial.println("OK");
     mqttClient.subscribe(INBOX_TOPIC);
     mqttClient.subscribe(GAMES_TOPIC);

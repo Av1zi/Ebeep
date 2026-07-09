@@ -101,17 +101,31 @@
 
 // ── WiFi / MQTT ───────────────────────────────────────────────
 // Credentials come from secret.h (not checked into VCS).
-// AP_pass: leave as "" in secret.h for an open access point.
-#define AP_NAME   "Ebeep_1_config"
+// AP_pass: leave empty to create an open acess point.
 #define WIFI_RECONNECT_GRACE_MS   (10UL * 1000)
+#define AP_password HOTSPOT_PASSWORD 
 
+// ── Device Identity ───────────────────────────────────────────
+//  THE ONLY LINE TO CHANGE BETWEEN DEVICES.
+#define DEVICE_NUM  1   // 1 or 2
+
+#if DEVICE_NUM == 1
+  #define AP_NAME    "Ebeep_1_config"
+  constexpr const char* BEEPER_ID  = "Beeper_1";
+  constexpr const char* RECIVER_ID = "Beeper_2";
+#elif DEVICE_NUM == 2
+  #define AP_NAME    "Ebeep_2_config"
+  constexpr const char* BEEPER_ID  = "Beeper_2";
+  constexpr const char* RECIVER_ID = "Beeper_1";
+#else
+  #error "DEVICE_NUM must be 1 or 2"
+#endif    
+
+// MQTT username matches BEEPER_ID — same string, no duplication.
+// Password is shared between both devices (from secret.h).
 constexpr const char* MQTT_SERVER_ADDR  = MQTT_SERVER;
 constexpr uint16_t    MQTT_SERVER_PORT  = MQTT_PORT;
-
-constexpr const char* BEEPER_ID  = "Beeper_1";
-constexpr const char* RECIVER_ID  = "Beeper_2";
-
-constexpr const char* MQTT_USERNAME_STR = MQTT_USERNAME;
+constexpr const char* MQTT_USERNAME_STR = BEEPER_ID;
 constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
 
 
