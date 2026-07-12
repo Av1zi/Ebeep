@@ -1,5 +1,9 @@
 #define STARTS_WITH(str, prefix) (strncmp(str, prefix, strlen(prefix)) == 0)
 
+// ═══════════════════════════════════════════════════════════════
+//  TicTacToeState.h
+// ═══════════════════════════════════════════════════════════════
+
 bool    inTicTacToe     = false;
 bool    TTT_hasOpponent = false;
 bool    TTT_pendingStart= false;   // we've sent TTT_START, waiting for ACK
@@ -21,10 +25,7 @@ uint8_t TTT_flags = TTT_NONE;
 #define TTT_I_WANT_REMATCH     (TTT_flags & 0x04)
 #define TTT_CONFIRM_LEAVE      (TTT_flags & 0x10)
 
-// Cached MQTT topics as fixed buffers, built once (BEEPER_ID/RECIVER_ID are
-// compile-time constants — a String rebuild every game entry/move/reconnect
-// was pure heap churn, and heap fragmentation is exactly the kind of thing
-// that causes long-uptime hangs on an ESP32).
+// Cached MQTT topics as fixed buffers
 static char TTT_topicOut[32];      // "<RECIVER_ID>/games/TTT"
 static char TTT_topicGameOut[32];  // "<RECIVER_ID>/games"
 static char TTT_topicIn[32];       // "<BEEPER_ID>/games/TTT"
@@ -104,7 +105,7 @@ bool TTT_evaluateOutcome() {
 
 void drawTicTacToe() {
   if (!TTT_hasOpponent) {
-    drawCenteredText(SCREEN_W / 2, CONTENT_Y + 52, "Waiting for opponent...", &FreeMonoBold12pt7b);
+    drawCenteredText(SCREEN_W / 2, CONTENT_Y + 52, "Waiting for opponent...", &FreeMonoBold9pt7b);
     drawButtonHints("exit", "", "");
     return;
   }
@@ -135,7 +136,7 @@ if (TTT_CONFIRM_LEAVE) {
     display.fillRect(0, bannerY, SCREEN_W, bannerH, GxEPD_WHITE);
     const char* headline = (result == TTT_WIN) ? "You Win!"
                           : (result == TTT_LOSE) ? "You Lose" : "Draw!";
-    drawCenteredText(SCREEN_W / 2, bannerY + 16, headline, &FreeMonoBold12pt7b);
+    drawCenteredText(SCREEN_W / 2, bannerY + 16, headline, &FreeMonoBold9pt7b);
 
     const char* sub = TTT_I_WANT_REMATCH ? "Waiting for opponent..." : "";
     if (sub[0] != '\0') {

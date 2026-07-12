@@ -157,7 +157,8 @@ enum ScreenState : uint8_t {
   STATE_COMPOSE,
   STATE_SENT,
   STATE_GAMES,
-  STATE_TICTACTOE
+  STATE_TICTACTOE,
+  STATE_CONNECT4
 };
 
 ScreenState currentState = STATE_WIFI;

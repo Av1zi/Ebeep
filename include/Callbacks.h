@@ -75,6 +75,7 @@ void checkButtons() {
         case STATE_SENT:      handleSentInput      (leftPressed, midPressed, rightPressed); break;
         case STATE_GAMES:     handleGamesInput     (leftPressed, midPressed, rightPressed); break;
         case STATE_TICTACTOE: handleTicTacToeInput (leftPressed, midPressed, rightPressed); break;
+        case STATE_CONNECT4:  handleConnect4Input  (leftPressed, midPressed, rightPressed); break; // Add this
         default: break;
       }
     }
@@ -82,7 +83,7 @@ void checkButtons() {
 
   // Hold-scroll repeat (Compose & Games only)
   if (heldButton != 0 &&
-      (currentState == STATE_COMPOSE || currentState == STATE_GAMES)) {
+      (currentState == STATE_COMPOSE || currentState == STATE_GAMES || currentState == STATE_CONNECT4)) {
     const bool stillHeld = (heldButton == -1) ? (curLeft == LOW) : (curRight == LOW);
 
     if (!stillHeld) {
@@ -115,6 +116,7 @@ void drawCurrentScreen() {
     case STATE_GAMES:     drawGames();     break;
     case STATE_WIFI:      drawWifi();      break;
     case STATE_TICTACTOE: drawTicTacToe(); break;
+    case STATE_CONNECT4:  drawConnect4();  break;
   }
 }
 
@@ -153,6 +155,7 @@ void refreshDisplay() {
       case STATE_SENT:      handleSentInput(l, m, r);       break;
       case STATE_GAMES:     handleGamesInput(l, m, r);      break;
       case STATE_TICTACTOE: handleTicTacToeInput(l, m, r);  break;
+      case STATE_CONNECT4:  handleConnect4Input  (l, m, r); break;
       default: break;
     }
   }
@@ -270,7 +273,7 @@ bool quickCheckAndMaybeSleep() {
 }
 
 bool sleepWouldLoseState() {
-  return inTicTacToe || TTT_pendingStart || messageLen > 0;
+  return inTicTacToe || TTT_pendingStart || inConnect4 || C4_pendingStart || messageLen > 0;
 }
 
 // Called every loop() tick. Drops to deep sleep once the active window
@@ -284,10 +287,10 @@ void handlePowerState() {
 
 // ── MQTT Callbacks ────────────────────────────────────────────
 void gameReqHandler(char* payload) {
-if (strcmp(payload, "TTT_START") == 0) {
+  if (strcmp(payload, "TTT_START") == 0) {
     if (TTT_pendingStart) {
       if (strcmp(BEEPER_ID, RECIVER_ID) < 0) TTT_becomeInitiator();
-      else                                    TTT_joinAsOpponent();
+      else                                   TTT_joinAsOpponent();
     } else if (inTicTacToe) {
       inTicTacToe     = false;
       TTT_hasOpponent = true;
@@ -314,7 +317,41 @@ if (strcmp(payload, "TTT_START") == 0) {
       return;
     }
   }
-  if (currentState == STATE_HOME || currentState == STATE_GAMES || currentState == STATE_TICTACTOE) {
+
+  // ── Connect 4 Logic ──
+  else if (strcmp(payload, "C4_START") == 0) {
+    if (C4_pendingStart) {
+      if (strcmp(BEEPER_ID, RECIVER_ID) < 0) C4_becomeInitiator();
+      else                                   C4_joinAsOpponent();
+    } else if (inConnect4) {
+      inConnect4     = false;
+      C4_hasOpponent = true;
+      C4_flags       = C4_NONE;
+      if (currentState == STATE_CONNECT4) {
+        currentState = STATE_HOME;
+        needRefresh  = true;
+        fastUpdate   = false;
+      }
+    } else {
+      C4_hasOpponent = true;
+    }
+  } else if (strcmp(payload, "C4_START_ACK") == 0) {
+    if (C4_pendingStart) C4_becomeInitiator();
+  } else if (strcmp(payload, "C4_LEFT") == 0) {
+    C4_hasOpponent  = false;
+    C4_pendingStart = false;
+    if (currentState == STATE_CONNECT4) {
+      inConnect4   = false;
+      C4_flags     = C4_NONE;
+      currentState = STATE_HOME;
+      needRefresh  = true;
+      fastUpdate   = false;
+      return;
+    }
+  }
+
+  if (currentState == STATE_HOME || currentState == STATE_GAMES || 
+      currentState == STATE_TICTACTOE || currentState == STATE_CONNECT4) {
     needRefresh = true;
     fastUpdate  = true;
   }
@@ -347,6 +384,9 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     if (strcmp(subTopic + 7, "TTT") == 0) {
       Serial.println("Got msg in TTT");
       checkTicTacToeMessages((char*)payload);
+    } else if (strcmp(subTopic + 7, "C4") == 0) {
+      Serial.println("Got msg in C4");
+      checkConnect4Messages((char*)payload);
     }
   }
 }

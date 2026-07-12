@@ -17,6 +17,7 @@
 #include "display_utils.h"
 #include "icons.h"
 #include "TicTacToeState.h"
+#include "Connect4State.h"
 #include "HomeState.h"
 #include "InboxState.h"
 #include "ComposeState.h"

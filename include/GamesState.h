@@ -151,7 +151,7 @@ static void handleGameSelect(int8_t idx) {
   switch (idx) {
     case 0:  currentState = STATE_TICTACTOE; needRefresh = true; enterTicTacToe(); break;
     case 1: /* currentState = STATE_BLACKJACK; needRefresh = true; */ break;
-    case 2: /* currentState = STATE_CONNECT4;  needRefresh = true; */ break;
+    case 2:  currentState = STATE_CONNECT4;  needRefresh = true; enterConnect4();  break;
   }
 }
 
