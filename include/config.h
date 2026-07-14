@@ -98,12 +98,7 @@
 #define TZ_STRING                 "IST-2IDT,M3.4.4/26,M10.5.0"
 #define WIFI_CONNECT_TIMEOUT_MS   5000UL
 #define MQTT_LISTEN_WINDOW_MS     3000UL
-
-// ── WiFi / MQTT ───────────────────────────────────────────────
-// Credentials come from secret.h (not checked into VCS).
-// AP_pass: leave empty to create an open acess point.
-#define WIFI_RECONNECT_GRACE_MS   (10UL * 1000)
-#define AP_password HOTSPOT_PASSWORD 
+ 
 
 // ── Device Identity ───────────────────────────────────────────
 //  THE ONLY LINE TO CHANGE BETWEEN DEVICES.
@@ -121,8 +116,13 @@
   #error "DEVICE_NUM must be 1 or 2"
 #endif    
 
-// MQTT username matches BEEPER_ID — same string, no duplication.
-// Password is shared between both devices (from secret.h).
+// ── WiFi / MQTT ───────────────────────────────────────────────
+// most of these are defined in a diffrent file (secret.h), to keep them out of git.
+#define WIFI_RECONNECT_GRACE_MS   (10UL * 1000)
+#define AP_password HOTSPOT_PASSWORD // AP_password: leave empty to create an open acess point.
+
+// MQTT username matches BEEPER_ID
+// Password is shared between both devices for simplicity.
 constexpr const char* MQTT_SERVER_ADDR  = MQTT_SERVER;
 constexpr uint16_t    MQTT_SERVER_PORT  = MQTT_PORT;
 constexpr const char* MQTT_USERNAME_STR = BEEPER_ID;
@@ -165,9 +165,9 @@ enum ScreenState : uint8_t {
 ScreenState currentState = STATE_WIFI;
 
 // ── Display refresh flags ─────────────────────────────────────
-bool needRefresh = false;   // true  → redraw this loop tick
-bool fastUpdate  = false;   // true  → partial refresh (content only)
-                            // false → full refresh (status bar included)
+bool needRefresh = false;   // true  -> redraw this loop tick
+bool fastUpdate  = false;   // true  -> partial refresh (content only)
+                            // false -> full refresh (status bar included)
 
 // ── Message buffers ───────────────────────────────────────────
 bool hasUnreadMessage                    = false;

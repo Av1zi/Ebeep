@@ -105,9 +105,7 @@ void checkButtons() {
 }
 
 
-// Draws whatever the current screen state is. Shared by the normal
-// content refresh and the periodic status-only refresh below, so the
-// two never drift out of sync with each other.
+// Draws whatever the current screen state is.
 void drawCurrentScreen() {
   switch (currentState) {
     case STATE_HOME:      drawHome();      break;

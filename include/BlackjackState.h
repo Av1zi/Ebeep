@@ -1,24 +1,7 @@
 #pragma once
 
 // ═══════════════════════════════════════════════════════════════
-//  BlackjackState.h  —  Single-player Blackjack
-//
-//  Content area: y=23..107  (85px tall, 296px wide)
-//
-//  Game layout (y values are absolute screen coords):
-//    y=24  "Dealer: N"  label
-//    y=27  dealer cards  (card height = 28px)
-//    y=55  divider line
-//    y=57  "You: N"  label
-//    y=60  player cards  (28px tall → bottom at 88, just above btn bar)
-//
-//  Betting layout:
-//    y=36  "Place your bet"
-//    y=50  balance
-//    y=58  bet box (28px tall)
-//    y=90  fill bar
-//
-//  Fraction steps: 1/4, 1/2, 3/4, all-in  (4 steps, wraps)
+//  BlackjackState.h
 // ═══════════════════════════════════════════════════════════════
 
 // ── Phase ────────────────────────────────────────────────────
@@ -175,8 +158,7 @@ static void bjDrawCard(int16_t x, int16_t y, uint8_t card, bool hidden) {
   static const char SUITS[] = "SHDC";
   char sb[2] = { SUITS[card / 13], '\0' };
   
-  // Shift the "10" slightly to the left (x + 1) so it centers perfectly,
-  // while single characters stay at (x + 4).
+  // Shift the "10" slightly to the left (x + 1) so it centers
   int16_t rankX = (rank == 9) ? x + 1 : x + 4;
   
   drawText(rankX, y + 14, rb, &FreeMonoBold9pt7b);
@@ -258,7 +240,7 @@ static void bjStartHand() {
   bjPlayer[0][bjPlayerLen[0]++] = bjDeal();
   bjDealer[bjDealerLen++]       = bjDeal();
 
-  // Natural blackjack — reveal dealer and resolve immediately
+  //reveal dealer and resolve immediately
   if (bjHandValue(bjPlayer[0], 2) == 21) {
     bjPlayDealer();
     bjResult[0] = bjResolveHand(bjPlayer[0], bjPlayerLen[0]);
@@ -312,7 +294,7 @@ void drawBlackjack() {
     snprintf(buf, sizeof(buf), "Bet: $%d", bjBet);
     drawCenteredText(SCREEN_W / 2, CONTENT_Y + 67, buf, &FreeMonoBold9pt7b);
 
-    // Fill bar  (fraction-based — 4 segments)
+    // Fill bar
     constexpr int16_t barX = 8, barY = CONTENT_Y + 73, barW = SCREEN_W - 16, barH = 5;
     display.drawRect(barX, barY, barW, barH, GxEPD_BLACK);
     const int16_t fillW = (int16_t)((bjBetFrac + 1) * barW / 4);
@@ -325,7 +307,7 @@ void drawBlackjack() {
   // ── Game screen (BJ_PLAYER / BJ_RESULT) ──────────────────
   const bool hideHole = (bjPhase == BJ_PLAYER);
 
-  // Dealer row — "Dealer: N+?" left, cards fan right-to-left from right edge
+  // Dealer row
   {
     char dbuf[16];
     uint8_t shown = hideHole
@@ -342,7 +324,7 @@ void drawBlackjack() {
   // Divider
   display.drawFastHLine(0, BJ_DIVIDER_Y, SCREEN_W, GxEPD_BLACK);
 
-  // Player row — "You: N" left, cards fan right-to-left from right edge
+  // Player row
   if (!bjSplit) {
     char pbuf[12];
     snprintf(pbuf, sizeof(pbuf), "You: %d", bjHandValue(bjPlayer[0], bjPlayerLen[0]));
@@ -364,7 +346,6 @@ void drawBlackjack() {
       ? mid - bjPlayerLen[0] * BJ_STEP + BJ_CW / 2
       : SCREEN_W - 2 - bjPlayerLen[1] * BJ_STEP + BJ_CW / 2;
     display.fillCircle(ax, BJ_PLAYER_CARD_Y - 3, 2, GxEPD_BLACK);
-    // Second label below first (only space for one line on left, show active hand value)
     drawText(4, BJ_PLAYER_LABEL_Y + 13, pb1, &FreeMonoBold9pt7b);
   }
 
@@ -373,7 +354,7 @@ void drawBlackjack() {
     // White strip from below player cards to just above DIVIDER_BOT
     // BJ_PLAYER_CARD_Y + BJ_CH = CONTENT_Y+71; DIVIDER_BOT=108
     const int16_t banY = BJ_PLAYER_CARD_Y + BJ_CH + 2;         // y=96
-    const int16_t banH = DIVIDER_BOT - banY - 1;                // ~11px — just enough for one text line
+    const int16_t banH = DIVIDER_BOT - banY - 1;                // ~11px
     display.fillRect(0, banY, SCREEN_W, banH, GxEPD_WHITE);
 
     char rbuf[28];
@@ -383,7 +364,6 @@ void drawBlackjack() {
     } else {
       snprintf(rbuf, sizeof(rbuf), "%s   Bal:$%d", bjResultStr(bjResult[0]), bjBalance);
     }
-    // Draw result text left-aligned in the left column (where labels are) — never touches cards
     drawText(4, banY + banH - 2, rbuf, &FreeMonoBold9pt7b);
     drawButtonHints("exit", "again", "");
     return;

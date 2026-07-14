@@ -2,9 +2,6 @@
 
 // ═══════════════════════════════════════════════════════════════
 //  InboxState.h
-//  Shows the last received message.
-//    LEFT  → Home
-//    RIGHT → Reply (opens Compose)
 // ═══════════════════════════════════════════════════════════════
 
 void drawInbox() {

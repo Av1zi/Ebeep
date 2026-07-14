@@ -65,7 +65,7 @@ char TTT_checkOutcome() {
   return 'D';
 }
 
-// Draws the 3x3 grid + symbols only (no button hints). Shared by the live
+// Draws the 3x3 grid + symbols only.
 // board view and the game-over screen so the final position stays visible.
 void TTT_drawBoard() {
   const int16_t boardRight  = TTT_LEFT + TTT_CELL * 3;
@@ -211,7 +211,7 @@ void enterTicTacToe() {
   mqttClient.subscribe(TTT_topicIn);
 
   if (TTT_hasOpponent) {
-    // They invited us first (gameReqHandler already saw their TTT_START) — join now.
+    // They invited us first
     TTT_joinAsOpponent();
   } else {
     TTT_pendingStart = true;
@@ -268,8 +268,7 @@ void checkTicTacToeMessages(char* payload) {
 }
 
 void leaveTicTacToe() {
-  // Sent on the broad "/games" channel (not "/games/TTT") so it reaches the
-  // opponent even if they haven't joined yet and never subscribed to TTT's
+  // Sent on the broad "/games" channel (not "/games/TTT") so it reaches the opponent
   mqttClient.publish(TTT_topicGameOut, "TTT_LEFT");
   mqttClient.unsubscribe(TTT_topicIn);
   inTicTacToe      = false;

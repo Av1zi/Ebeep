@@ -11,7 +11,7 @@
 #include "config.h"
 
 // ═══════════════════════════════════════════════════════════════
-//  CODE INJECTION  (order matters — each file uses symbols above)
+//  CODE INJECTION  (order matters)
 // ═══════════════════════════════════════════════════════════════
 
 #include "display_utils.h"
@@ -47,8 +47,7 @@ void connectWifi(){
   lastWifiState = true;
 }
 
-// Topics never change at runtime (BEEPER_ID is fixed) — build once instead
-// of allocating a String on every single reconnect attempt.
+// build once instead of allocating a String on every single reconnect attempt.
 static char INBOX_TOPIC[24] = "";
 static char GAMES_TOPIC[24] = "";
 
@@ -102,20 +101,20 @@ void setup() {
 
   // ── WiFi ─────────────────────────────────────────────────
   if (WiFi.status() != WL_CONNECTED) {
-    refreshDisplay();   // paint "Connecting..." now — connectWifi() blocks below
+    refreshDisplay();   // shows wifisate
     needRefresh = false;
-    //wm.resetSettings();  // uncomment to erase settings
+    //wm.resetSettings();  // uncomment to erase save wifi credentials
     connectWifi();
   }
   wifiClient.setInsecure();
-  wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);        // bounds TCP/TLS connect — a bad network can't stall loop() for long anymore
+  wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);
   mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
   WiFi.setAutoReconnect(true); // Let hardware handle background wifi reconnection
   WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
   // ── MQTT ─────────────────────────────────────────────────
   if (!mqttClient.connected()) connectMQTT();
-  syncNightClock();  // one-time NTP sync; RTC keeps time through deep sleep after that
+  syncNightClock();  // one-time NTP sync
 
   currentState = STATE_HOME;
   needRefresh  = true;
