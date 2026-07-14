@@ -75,7 +75,8 @@ void checkButtons() {
         case STATE_SENT:      handleSentInput      (leftPressed, midPressed, rightPressed); break;
         case STATE_GAMES:     handleGamesInput     (leftPressed, midPressed, rightPressed); break;
         case STATE_TICTACTOE: handleTicTacToeInput (leftPressed, midPressed, rightPressed); break;
-        case STATE_CONNECT4:  handleConnect4Input  (leftPressed, midPressed, rightPressed); break; // Add this
+        case STATE_CONNECT4:  handleConnect4Input  (leftPressed, midPressed, rightPressed); break;
+        case STATE_BLACKJACK: handleBlackjackInput(leftPressed, midPressed, rightPressed); break;
         default: break;
       }
     }
@@ -117,6 +118,7 @@ void drawCurrentScreen() {
     case STATE_WIFI:      drawWifi();      break;
     case STATE_TICTACTOE: drawTicTacToe(); break;
     case STATE_CONNECT4:  drawConnect4();  break;
+    case STATE_BLACKJACK: drawBlackjack(); break;
   }
 }
 
@@ -156,6 +158,7 @@ void refreshDisplay() {
       case STATE_GAMES:     handleGamesInput(l, m, r);      break;
       case STATE_TICTACTOE: handleTicTacToeInput(l, m, r);  break;
       case STATE_CONNECT4:  handleConnect4Input  (l, m, r); break;
+      case STATE_BLACKJACK: handleBlackjackInput(l, m, r); break;
       default: break;
     }
   }

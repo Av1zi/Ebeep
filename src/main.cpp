@@ -18,6 +18,7 @@
 #include "icons.h"
 #include "TicTacToeState.h"
 #include "Connect4State.h"
+#include "BlackjackState.h"
 #include "HomeState.h"
 #include "InboxState.h"
 #include "ComposeState.h"
@@ -35,6 +36,7 @@ bool lastWifiState = false;
 bool lastMqttState = false;
 
 void connectWifi(){
+  wm.setConfigPortalTimeout(0);  // portal never times out
   if (sizeof(HOTSPOT_PASSWORD) > 1) {
     wm.autoConnect(AP_NAME, AP_password);
   } else {

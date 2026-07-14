@@ -158,6 +158,7 @@ enum ScreenState : uint8_t {
   STATE_SENT,
   STATE_GAMES,
   STATE_TICTACTOE,
+  STATE_BLACKJACK,
   STATE_CONNECT4
 };
 
