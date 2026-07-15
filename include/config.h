@@ -3,9 +3,7 @@
 #include <secret.h>  // HOTSPOT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_PASSWORD
 
 // ═══════════════════════════════════════════════════════════════
-//  EBEEP — config.h
-//  Hardware pins, layout constants, and app settings.
-//  All values are compile-time constants — nothing mutable here.
+//  config.h - Hardware pins, layout constants, and app settings.
 // ═══════════════════════════════════════════════════════════════
 
 // ── E-Ink Display SPI Pins ────────────────────────────────────

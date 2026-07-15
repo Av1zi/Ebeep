@@ -82,9 +82,11 @@ void checkButtons() {
     }
   }
 
-  // Hold-scroll repeat (Compose & Games only)
+  // Hold-scroll repeat (Compose, Games, and in-game selectors)
   if (heldButton != 0 &&
-      (currentState == STATE_COMPOSE || currentState == STATE_GAMES || currentState == STATE_CONNECT4)) {
+      (currentState == STATE_COMPOSE || currentState == STATE_GAMES ||
+       currentState == STATE_TICTACTOE || currentState == STATE_CONNECT4 ||
+       currentState == STATE_BLACKJACK)) {
     const bool stillHeld = (heldButton == -1) ? (curLeft == LOW) : (curRight == LOW);
 
     if (!stillHeld) {
@@ -94,8 +96,14 @@ void checkButtons() {
       lastRepeatAt = now;
       const bool fL = (heldButton == -1);
       const bool fR = (heldButton ==  1);
-      if (currentState == STATE_COMPOSE) handleComposeInput(fL, false, fR);
-      else                               handleGamesInput  (fL, false, fR);
+      switch (currentState) {
+        case STATE_COMPOSE:   handleComposeInput   (fL, false, fR); break;
+        case STATE_GAMES:     handleGamesInput     (fL, false, fR); break;
+        case STATE_TICTACTOE: handleTicTacToeInput (fL, false, fR); break;
+        case STATE_CONNECT4:  handleConnect4Input  (fL, false, fR); break;
+        case STATE_BLACKJACK: handleBlackjackInput (fL, false, fR); break;
+        default: break;
+      }
     }
   }
 
@@ -370,6 +378,7 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     uint8_t msgLen = (length < MAX_MSG_LEN) ? (uint8_t)length : MAX_MSG_LEN;
     memcpy(lastReceivedMessage, payload, msgLen);
     lastReceivedMessage[msgLen] = '\0';
+    mqttClient.publish(topic, "", true);  // wipe retained copy
     hasUnreadMessage = true;
     if (currentState == STATE_HOME) {
       needRefresh = true;

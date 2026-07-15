@@ -127,8 +127,10 @@ void drawGames() {
   drawCartridge(GCART_LX, GCART_SY, GCART_SW, GCART_SH, leftTitle,   false, false, li);
   drawCartridge(GCART_RX, GCART_SY, GCART_SW, GCART_SH, rightTitle,  false, false, ri);
   drawCartridge(GCART_CX, GCART_CY, GCART_CW, GCART_CH, centerTitle, true,  true,  gamesSelectedIdx);
-  // Opponent-waiting indicator dot on TicTacToe cartridge (index 0)
-  if (gamesSelectedIdx == 0 && TTT_hasOpponent) {
+  // Opponent-waiting indicator dot (TicTacToe = index 0, Connect4 = index 2)
+  const bool showOppDot = (gamesSelectedIdx == 0 && TTT_hasOpponent) ||
+                          (gamesSelectedIdx == 2 && C4_hasOpponent);
+  if (showOppDot) {
     display.fillCircle(GCART_CX + GCART_CW - 8, GCART_CY + 8, 6, GxEPD_BLACK);
   }
 

@@ -125,7 +125,7 @@ void handleComposeInput(bool leftPressed, bool midPressed, bool rightPressed) {
         typedMessage[--messageLen] = '\0';   // strip trailing space
         static char inboxTopic[24] = "";     // built once — RECIVER_ID never changes
         if (inboxTopic[0] == '\0') snprintf(inboxTopic, sizeof(inboxTopic), "%s/inbox", RECIVER_ID);
-        mqttClient.publish(inboxTopic, typedMessage);
+        mqttClient.publish(inboxTopic, typedMessage, true);
         currentState  = STATE_SENT;
         sentEnteredAt = millis();
         needRefresh   = true;
