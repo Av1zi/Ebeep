@@ -84,8 +84,8 @@ static int16_t bjBetFromFrac(uint8_t frac) {
 }
 
 // ── Action menu ──────────────────────────────────────────────
-enum BjAction : uint8_t { BJ_HIT, BJ_STAND, BJ_DOUBLE, BJ_SPLIT, BJ_EXIT };
-static uint8_t bjActions[5];
+enum BjAction : uint8_t { BJ_HIT, BJ_STAND, BJ_DOUBLE, BJ_SPLIT, BJ_EXIT, BJ_TEST_MASSIVE };
+static uint8_t bjActions[6];
 static uint8_t bjActionCount;
 static uint8_t bjActionIdx;
 
@@ -105,12 +105,13 @@ static void bjBuildActions() {
 
 static const char* bjActionLabel(BjAction a) {
   switch (a) {
-    case BJ_HIT:    return "Hit";
-    case BJ_STAND:  return "Stand";
-    case BJ_DOUBLE: return "Dbl";
-    case BJ_SPLIT:  return "Split";
-    case BJ_EXIT:   return "Exit";
-    default:        return "?";
+    case BJ_HIT:          return "Hit";
+    case BJ_STAND:        return "Stand";
+    case BJ_DOUBLE:       return "Dbl";
+    case BJ_SPLIT:        return "Split";
+    case BJ_EXIT:         return "Exit";
+    case BJ_TEST_MASSIVE: return "Test11";
+    default:              return "?";
   }
 }
 
@@ -132,10 +133,23 @@ static const char* bjResultStr(BjResult r) {
 // Each card: 26px wide, 34px tall
 static constexpr int16_t BJ_CW   = 26;
 static constexpr int16_t BJ_CH   = 34;
-static constexpr int16_t BJ_STEP = 28;  // 28px step > 26px width = a guaranteed 2px gap between cards!
+static constexpr int16_t BJ_STEP = 28;  // default step size (guarantees 2px gap)
+
+// Leftmost limits on the screen to prevent cards overlapping text labels
+static constexpr int16_t BJ_DEALER_MIN_X = 95;  // Space for "Dealer: XX"
+static constexpr int16_t BJ_PLAYER_MIN_X = 75;  // Space for "You: XX" or "H1:XX •"
+
+// Dynamic step logic to contract gaps as hand sizes grow
+static int16_t bjGetStep(uint8_t len, int16_t minX) {
+  if (len <= 1) return BJ_STEP;
+  int16_t maxWidth = (SCREEN_W - 2) - minX;
+  int16_t maxStep = (maxWidth - BJ_CW) / (len - 1);
+  if (maxStep > BJ_STEP) return BJ_STEP;
+  if (maxStep < 4) return 4; // Absolute minimum floor so cards are readable
+  return maxStep;
+}
 
 static void bjDrawCard(int16_t x, int16_t y, uint8_t card, bool hidden) {
-  // Clear the card's bounding box to white first to prevent any background/line bleeding
   display.fillRect(x, y, BJ_CW, BJ_CH, GxEPD_WHITE);
   display.drawRect(x, y, BJ_CW, BJ_CH, GxEPD_BLACK);
   
@@ -158,7 +172,6 @@ static void bjDrawCard(int16_t x, int16_t y, uint8_t card, bool hidden) {
   static const char SUITS[] = "SHDC";
   char sb[2] = { SUITS[card / 13], '\0' };
   
-  // Shift the "10" slightly to the left (x + 1) so it centers
   int16_t rankX = (rank == 9) ? x + 1 : x + 4;
   
   drawText(rankX, y + 14, rb, &FreeMonoBold9pt7b);
@@ -166,13 +179,12 @@ static void bjDrawCard(int16_t x, int16_t y, uint8_t card, bool hidden) {
 }
 
 static void bjDrawHand(int16_t x, int16_t y,
-                       const uint8_t* hand, uint8_t len, bool hideSecond) {
+                       const uint8_t* hand, uint8_t len, bool hideSecond, int16_t step) {
   for (uint8_t i = 0; i < len; i++)
-    bjDrawCard(x + i * BJ_STEP, y, hand[i], hideSecond && i == 1);
+    bjDrawCard(x + i * step, y, hand[i], hideSecond && i == 1);
 }
 
 // ── Layout constants (absolute y) ────────────────────────────
-// Adjusted Y-offsets to comfortably fit the 34px tall cards
 static constexpr int16_t BJ_CARDS_X        = 96;               
 static constexpr int16_t BJ_DEALER_LABEL_Y = CONTENT_Y + 14;   
 static constexpr int16_t BJ_DEALER_CARD_Y  = CONTENT_Y +  0;   
@@ -215,7 +227,6 @@ static void bjPlayDealer() {
 }
 
 static void bjFinishRound() {
-  // The dealer only plays if the player has at least one hand that hasn't busted
   bool playerHasActiveHand = (bjHandValue(bjPlayer[0], bjPlayerLen[0]) <= 21);
   if (bjSplit && (bjHandValue(bjPlayer[1], bjPlayerLen[1]) <= 21)) {
     playerHasActiveHand = true;
@@ -249,7 +260,6 @@ static void bjStartHand() {
   bjPlayer[0][bjPlayerLen[0]++] = bjDeal();
   bjDealer[bjDealerLen++]       = bjDeal();
 
-  //reveal dealer and resolve immediately
   if (bjHandValue(bjPlayer[0], 2) == 21) {
     bjPlayDealer();
     bjResult[0] = bjResolveHand(bjPlayer[0], bjPlayerLen[0]);
@@ -282,28 +292,22 @@ void drawBlackjack() {
 
   // ── Betting screen ────────────────────────────────────────
   if (bjPhase == BJ_BETTING) {
-    // "Place your bet" title
     drawCenteredText(SCREEN_W / 2, CONTENT_Y + 14, "Place your bet", &FreeMonoBold9pt7b);
 
-    // Balance
     char buf[20];
     snprintf(buf, sizeof(buf), "Bal: $%d", bjBalance);
     drawCenteredText(SCREEN_W / 2, CONTENT_Y + 29, buf, &FreeMonoBold9pt7b);
 
-    // Fraction selector  < [label] >  +  bet amount below
     const char* fracLabel = BJ_FRAC_LABELS[bjBetFrac];
-    // Box around fraction label
     constexpr int16_t fx = SCREEN_W / 2 - 18, fy = CONTENT_Y + 34, fw = 36, fh = 20;
     display.drawRect(fx, fy, fw, fh, GxEPD_BLACK);
     drawCenteredText(SCREEN_W / 2, fy + 14, fracLabel, &FreeMonoBold9pt7b);
     drawCenteredText(SCREEN_W / 2 - 36, fy + 14, "<", &FreeMonoBold9pt7b);
     drawCenteredText(SCREEN_W / 2 + 36, fy + 14, ">", &FreeMonoBold9pt7b);
 
-    // Bet amount
     snprintf(buf, sizeof(buf), "Bet: $%d", bjBet);
     drawCenteredText(SCREEN_W / 2, CONTENT_Y + 67, buf, &FreeMonoBold9pt7b);
 
-    // Fill bar
     constexpr int16_t barX = 8, barY = CONTENT_Y + 73, barW = SCREEN_W - 16, barH = 5;
     display.drawRect(barX, barY, barW, barH, GxEPD_BLACK);
     const int16_t fillW = (int16_t)((bjBetFrac + 1) * barW / 4);
@@ -325,9 +329,11 @@ void drawBlackjack() {
     if (hideHole) snprintf(dbuf, sizeof(dbuf), "Dealer: %d+?", shown);
     else          snprintf(dbuf, sizeof(dbuf), "Dealer: %d",   shown);
     drawText(4, BJ_DEALER_LABEL_Y, dbuf, &FreeMonoBold9pt7b);
-    // Cards fan rightward from right edge: rightmost card at SCREEN_W-2
-    const int16_t dStartX = SCREEN_W - 2 - bjDealerLen * BJ_STEP;
-    bjDrawHand(dStartX, BJ_DEALER_CARD_Y, bjDealer, bjDealerLen, hideHole);
+
+    // Compute dynamic step and perfect starting coordinate
+    int16_t step = bjGetStep(bjDealerLen, BJ_DEALER_MIN_X);
+    int16_t dStartX = (bjDealerLen > 0) ? (SCREEN_W - 2) - ((bjDealerLen - 1) * step + BJ_CW) : (SCREEN_W - 2);
+    bjDrawHand(dStartX, BJ_DEALER_CARD_Y, bjDealer, bjDealerLen, hideHole, step);
   }
 
   // Divider
@@ -338,35 +344,35 @@ void drawBlackjack() {
     char pbuf[12];
     snprintf(pbuf, sizeof(pbuf), "You: %d", bjHandValue(bjPlayer[0], bjPlayerLen[0]));
     drawText(4, BJ_PLAYER_LABEL_Y, pbuf, &FreeMonoBold9pt7b);
-    const int16_t pStartX = SCREEN_W - 2 - bjPlayerLen[0] * BJ_STEP;
-    bjDrawHand(pStartX, BJ_PLAYER_CARD_Y, bjPlayer[0], bjPlayerLen[0], false);
+
+    // Compute dynamic step and perfect starting coordinate
+    int16_t step = bjGetStep(bjPlayerLen[0], BJ_PLAYER_MIN_X);
+    int16_t pStartX = (bjPlayerLen[0] > 0) ? (SCREEN_W - 2) - ((bjPlayerLen[0] - 1) * step + BJ_CW) : (SCREEN_W - 2);
+    bjDrawHand(pStartX, BJ_PLAYER_CARD_Y, bjPlayer[0], bjPlayerLen[0], false, step);
   } else {
-    // Split: H1/H2 labels left, each hand fans from right edge of its half
-    char pb0[10], pb1[10];
+    // Split: Active indicator dot next to H1/H2 labels
+    char pb0[12], pb1[12];
     snprintf(pb0, sizeof(pb0), "H1:%d", bjHandValue(bjPlayer[0], bjPlayerLen[0]));
     snprintf(pb1, sizeof(pb1), "H2:%d", bjHandValue(bjPlayer[1], bjPlayerLen[1]));
-    drawText(4, BJ_PLAYER_LABEL_Y, pb0, &FreeMonoBold9pt7b);
     
-    // H1 cards fan from screen midpoint leftward, H2 from right edge leftward
-    const int16_t mid = SCREEN_W / 2;
-    bjDrawHand(mid - bjPlayerLen[0] * BJ_STEP, BJ_PLAYER_CARD_Y, bjPlayer[0], bjPlayerLen[0], false);
-    bjDrawHand(SCREEN_W - 2 - bjPlayerLen[1] * BJ_STEP, BJ_PLAYER_CARD_Y, bjPlayer[1], bjPlayerLen[1], false);
+    if (bjActiveHand == 0) {
+      display.fillCircle(6, BJ_PLAYER_LABEL_Y - 4, 3, GxEPD_BLACK);
+    }
+    drawText(16, BJ_PLAYER_LABEL_Y, pb0, &FreeMonoBold9pt7b);
     
-    // Active hand indicator: Points up directly under the bottom center of the active hand's first card
-    const int16_t ax = (bjActiveHand == 0)
-      ? mid - bjPlayerLen[0] * BJ_STEP + BJ_CW / 2
-      : SCREEN_W - 2 - bjPlayerLen[1] * BJ_STEP + BJ_CW / 2;
+    if (bjActiveHand == 1) {
+      display.fillCircle(6, BJ_PLAYER_LABEL_Y + 13 - 4, 3, GxEPD_BLACK);
+    }
+    drawText(16, BJ_PLAYER_LABEL_Y + 13, pb1, &FreeMonoBold9pt7b);
     
-    const int16_t ay = BJ_PLAYER_CARD_Y + BJ_CH + 4; // Safely positioned below the card borders
-    display.fillTriangle(ax, ay, ax - 4, ay + 4, ax + 4, ay + 4, GxEPD_BLACK);
-    display.drawFastVLine(ax, ay + 4, 4, GxEPD_BLACK); // Nice sharp stem
-
-    drawText(4, BJ_PLAYER_LABEL_Y + 13, pb1, &FreeMonoBold9pt7b);
+    // Compute dynamic step and draw ONLY the active hand
+    int16_t step = bjGetStep(bjPlayerLen[bjActiveHand], BJ_PLAYER_MIN_X);
+    int16_t pStartX = (bjPlayerLen[bjActiveHand] > 0) ? (SCREEN_W - 2) - ((bjPlayerLen[bjActiveHand] - 1) * step + BJ_CW) : (SCREEN_W - 2);
+    bjDrawHand(pStartX, BJ_PLAYER_CARD_Y, bjPlayer[bjActiveHand], bjPlayerLen[bjActiveHand], false, step);
   }
 
   // ── Result banner ─────────────────────────────────────────
   if (bjPhase == BJ_RESULT) {
-    // White strip from below player cards to just above DIVIDER_BOT
     const int16_t banY = BJ_PLAYER_CARD_Y + BJ_CH + 2;         // y=96
     const int16_t banH = DIVIDER_BOT - banY - 1;                // ~11px
     display.fillRect(0, banY, SCREEN_W, banH, GxEPD_WHITE);
@@ -379,7 +385,7 @@ void drawBlackjack() {
       snprintf(rbuf, sizeof(rbuf), "%s   Bal:$%d", bjResultStr(bjResult[0]), bjBalance);
     }
     drawText(4, banY + banH - 2, rbuf, &FreeMonoBold9pt7b);
-    drawButtonHints("exit", "again", "");
+    drawButtonHints("exit", "again", bjSplit ? "H1/H2" : "");
     return;
   }
 
@@ -396,7 +402,6 @@ void drawBlackjack() {
 static void bjAdvanceHand() {
   if (bjSplit && bjActiveHand == 0) {
     bjActiveHand = 1;
-    // If the second hand is already 21 (e.g. from the split), resolve the entire round immediately
     if (bjHandValue(bjPlayer[1], bjPlayerLen[1]) >= 21) {
       bjFinishRound();
     } else {
@@ -473,7 +478,6 @@ void handleBlackjackInput(bool leftPressed, bool midPressed, bool rightPressed) 
           bjPlayer[1][bjPlayerLen[1]++] = bjDeal();
           bjActiveHand = 0;
           
-          // Check if Hand 1 hits 21 immediately on split deal
           if (bjHandValue(bjPlayer[0], bjPlayerLen[0]) >= 21) {
             bjAdvanceHand();
           } else {
@@ -482,7 +486,7 @@ void handleBlackjackInput(bool leftPressed, bool midPressed, bool rightPressed) 
           }
           break;
         }
-
+        
         case BJ_EXIT:
           bjBalance -= bjBet;
           if (bjBalance <= 0) bjBalance = 50;
@@ -507,6 +511,9 @@ void handleBlackjackInput(bool leftPressed, bool midPressed, bool rightPressed) 
     } else if (leftPressed) {
       currentState = STATE_GAMES;
       needRefresh  = true; fastUpdate = false;
+    } else if (rightPressed && bjSplit) {
+      bjActiveHand = 1 - bjActiveHand;
+      needRefresh  = true; fastUpdate = true;
     }
     return;
   }
