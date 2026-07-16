@@ -215,7 +215,16 @@ static void bjPlayDealer() {
 }
 
 static void bjFinishRound() {
-  bjPlayDealer();
+  // The dealer only plays if the player has at least one hand that hasn't busted
+  bool playerHasActiveHand = (bjHandValue(bjPlayer[0], bjPlayerLen[0]) <= 21);
+  if (bjSplit && (bjHandValue(bjPlayer[1], bjPlayerLen[1]) <= 21)) {
+    playerHasActiveHand = true;
+  }
+
+  if (playerHasActiveHand) {
+    bjPlayDealer();
+  }
+
   bjResult[0] = bjResolveHand(bjPlayer[0], bjPlayerLen[0]);
   bjApplyResult(bjResult[0], bjBet);
   if (bjSplit) {
@@ -337,22 +346,27 @@ void drawBlackjack() {
     snprintf(pb0, sizeof(pb0), "H1:%d", bjHandValue(bjPlayer[0], bjPlayerLen[0]));
     snprintf(pb1, sizeof(pb1), "H2:%d", bjHandValue(bjPlayer[1], bjPlayerLen[1]));
     drawText(4, BJ_PLAYER_LABEL_Y, pb0, &FreeMonoBold9pt7b);
+    
     // H1 cards fan from screen midpoint leftward, H2 from right edge leftward
     const int16_t mid = SCREEN_W / 2;
     bjDrawHand(mid - bjPlayerLen[0] * BJ_STEP, BJ_PLAYER_CARD_Y, bjPlayer[0], bjPlayerLen[0], false);
     bjDrawHand(SCREEN_W - 2 - bjPlayerLen[1] * BJ_STEP, BJ_PLAYER_CARD_Y, bjPlayer[1], bjPlayerLen[1], false);
-    // Active hand indicator dot above active hand
+    
+    // Active hand indicator: Points up directly under the bottom center of the active hand's first card
     const int16_t ax = (bjActiveHand == 0)
       ? mid - bjPlayerLen[0] * BJ_STEP + BJ_CW / 2
       : SCREEN_W - 2 - bjPlayerLen[1] * BJ_STEP + BJ_CW / 2;
-    display.fillCircle(ax, BJ_PLAYER_CARD_Y - 3, 2, GxEPD_BLACK);
+    
+    const int16_t ay = BJ_PLAYER_CARD_Y + BJ_CH + 4; // Safely positioned below the card borders
+    display.fillTriangle(ax, ay, ax - 4, ay + 4, ax + 4, ay + 4, GxEPD_BLACK);
+    display.drawFastVLine(ax, ay + 4, 4, GxEPD_BLACK); // Nice sharp stem
+
     drawText(4, BJ_PLAYER_LABEL_Y + 13, pb1, &FreeMonoBold9pt7b);
   }
 
   // ── Result banner ─────────────────────────────────────────
   if (bjPhase == BJ_RESULT) {
     // White strip from below player cards to just above DIVIDER_BOT
-    // BJ_PLAYER_CARD_Y + BJ_CH = CONTENT_Y+71; DIVIDER_BOT=108
     const int16_t banY = BJ_PLAYER_CARD_Y + BJ_CH + 2;         // y=96
     const int16_t banH = DIVIDER_BOT - banY - 1;                // ~11px
     display.fillRect(0, banY, SCREEN_W, banH, GxEPD_WHITE);
@@ -370,12 +384,28 @@ void drawBlackjack() {
   }
 
   // ── Action selector (BJ_PLAYER) ──────────────────────────
-  // Drawn in the button hints bar: < [Action $bet] >
   {
     char abuf[20];
     const BjAction cur = (BjAction)bjActions[bjActionIdx];
     snprintf(abuf, sizeof(abuf), "%s $%d", bjActionLabel(cur), bjBet);
     drawButtonHints("<", abuf, ">");
+  }
+}
+
+// Helper to advance to the next hand or finish the round if appropriate
+static void bjAdvanceHand() {
+  if (bjSplit && bjActiveHand == 0) {
+    bjActiveHand = 1;
+    // If the second hand is already 21 (e.g. from the split), resolve the entire round immediately
+    if (bjHandValue(bjPlayer[1], bjPlayerLen[1]) >= 21) {
+      bjFinishRound();
+    } else {
+      bjBuildActions();
+      needRefresh = true;
+      fastUpdate  = true;
+    }
+  } else {
+    bjFinishRound();
   }
 }
 
@@ -415,13 +445,7 @@ void handleBlackjackInput(bool leftPressed, bool midPressed, bool rightPressed) 
         case BJ_HIT:
           hand[len++] = bjDeal();
           if (bjHandValue(hand, len) >= 21) {
-            if (bjSplit && bjActiveHand == 0) {
-              bjActiveHand = 1;
-              bjBuildActions();
-              needRefresh = true; fastUpdate = true;
-            } else {
-              bjFinishRound();
-            }
+            bjAdvanceHand();
           } else {
             bjBuildActions();
             needRefresh = true; fastUpdate = true;
@@ -429,26 +453,14 @@ void handleBlackjackInput(bool leftPressed, bool midPressed, bool rightPressed) 
           break;
 
         case BJ_STAND:
-          if (bjSplit && bjActiveHand == 0) {
-            bjActiveHand = 1;
-            bjBuildActions();
-            needRefresh = true; fastUpdate = true;
-          } else {
-            bjFinishRound();
-          }
+          bjAdvanceHand();
           break;
 
         case BJ_DOUBLE:
           bjBalance -= bjBet;
           bjBet     *= 2;
           hand[len++] = bjDeal();
-          if (bjSplit && bjActiveHand == 0) {
-            bjActiveHand = 1;
-            bjBuildActions();
-            needRefresh = true; fastUpdate = true;
-          } else {
-            bjFinishRound();
-          }
+          bjAdvanceHand();
           break;
 
         case BJ_SPLIT: {
@@ -460,8 +472,14 @@ void handleBlackjackInput(bool leftPressed, bool midPressed, bool rightPressed) 
           bjPlayer[0][bjPlayerLen[0]++] = bjDeal();
           bjPlayer[1][bjPlayerLen[1]++] = bjDeal();
           bjActiveHand = 0;
-          bjBuildActions();
-          needRefresh = true; fastUpdate = false;
+          
+          // Check if Hand 1 hits 21 immediately on split deal
+          if (bjHandValue(bjPlayer[0], bjPlayerLen[0]) >= 21) {
+            bjAdvanceHand();
+          } else {
+            bjBuildActions();
+            needRefresh = true; fastUpdate = false;
+          }
           break;
         }
 
