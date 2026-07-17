@@ -64,26 +64,24 @@ The device spends most of its time in deep sleep, waking every 30 seconds to che
 
 ## Building Your Own
 
-### Electrical digram
+### Electrical Diagram
+<img width="2400" height="2400" alt="Ebeep wiring diagram" src="https://github.com/user-attachments/assets/2caf1f5a-6e71-49ab-91ef-3e4e569b0644" />
 
-<img width="2400" height="2400" alt="image" src="https://github.com/user-attachments/assets/2caf1f5a-6e71-49ab-91ef-3e4e569b0644" />
+### Building Instructions
+1. 3D print the files from the `STL` folder
+2. Solder everything onto the perfboard following the electrical diagram above
+3. Flash the code (see **Setting Up the Code** below) and test before closing the case
+4. Fit the components into the case & add double-sided tape under the battery to secure it
+5. Press in the 4× M4 heated inserts, then screw the case shut with the M4×25 screws
 
-### Building instructions
-
-- 3d print the files inside the STL folder
-- wire everything on the prefboard like shown in the electrical diagram
-- fit everything inside the 3d printed case and add some double sided tape to secure the battery
-- screw everything together and your done
-
-### setting up the code
-
-1. Flash `DEVICE_NUM 1` on one device and `DEVICE_NUM 2` on the other — that's the only line that differs between them
-2. Create a `secret.h` with your MQTT broker credentials (see `.gitignore` — it's excluded from the repo)
-3. Upload via PlatformIO (`huge_app.csv` partition scheme is required)
-4. On first boot, connect to the config hotspot and enter your WiFi credentials
+### Setting Up the Code
+1. Change `DEVICE_NUM` to `1` on one device and `2` on the other
+2. Create `secret.h` with your MQTT broker credentials (excluded from the repo via `.gitignore`)
+3. Upload via PlatformIO, the `huge_app.csv` partition scheme is required
+4. On first boot, connect to the config hotspot (`Ebeep_1_config` or `Ebeep_2_config`) and enter your WiFi credentials
 
 ---
 
 ## License
 
-GPL 3.0 - Do whatever you want with it, just keep it open source.
+GPL 3.0 - Do whatever you want with it, just keep it open source as well.
