@@ -31,6 +31,7 @@ https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 | Display | WeAct 2.9" eInk |
 | Battery | 3.7V LiPo, 3000mAh |
 | Buttons | 3× low profile mechanical keyboard switches |
+| Case | * 76~ grams of PLA filament <br> * 4× M4 heated inserts <br> * 4× M4x25 screws   |
 | Other |  * 2× 200kΩ resistors (voltage divider for battery sensing)<br> * 5x7cm PrefBoard |
 
 ---
@@ -62,6 +63,19 @@ The device spends most of its time in deep sleep, waking every 30 seconds to che
 ---
 
 ## Building Your Own
+
+### Electrical digram
+
+<img width="2400" height="2400" alt="image" src="https://github.com/user-attachments/assets/2caf1f5a-6e71-49ab-91ef-3e4e569b0644" />
+
+### Building instructions
+
+- 3d print the files inside the STL folder
+- wire everything on the prefboard like shown in the electrical diagram
+- fit everything inside the 3d printed case and add some double sided tape to secure the battery
+- screw everything together and your done
+
+### setting up the code
 
 1. Flash `DEVICE_NUM 1` on one device and `DEVICE_NUM 2` on the other — that's the only line that differs between them
 2. Create a `secret.h` with your MQTT broker credentials (see `.gitignore` — it's excluded from the repo)
