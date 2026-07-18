@@ -24,12 +24,13 @@
 #include "ComposeState.h"
 #include "SentState.h"
 #include "GamesState.h"
-#include "wifiState.h"
+#include "WifiState.h"
 #include "Callbacks.h"
 
 // ═══════════════════════════════════════════════════════════════
 //  Functions
 // ═══════════════════════════════════════════════════════════════
+
 WiFiManager wm;
 unsigned long lastReconnectAttempt = 0;
 bool lastWifiState = false;

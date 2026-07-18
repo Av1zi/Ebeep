@@ -378,7 +378,6 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     uint8_t msgLen = (length < MAX_MSG_LEN) ? (uint8_t)length : MAX_MSG_LEN;
     memcpy(lastReceivedMessage, payload, msgLen);
     lastReceivedMessage[msgLen] = '\0';
-    mqttClient.publish(topic, "", true);  // wipe retained copy
     hasUnreadMessage = true;
     if (currentState == STATE_HOME) {
       needRefresh = true;
