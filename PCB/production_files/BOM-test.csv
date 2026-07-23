@@ -1,0 +1,7 @@
+Comment,Designator,Footprint,LCSC,Quantity
+100nF,C1,C_0603_1608Metric,,1
+200K,R1,R_0603_1608Metric,,1
+"WeAct 2.9"" ePaper",Epapers1,Molex_PicoBlade_53261-0871_1x08-1MP_P1.25mm_Horizontal,,1
+Conn_01x02,JST-PH-2pin1,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,,1
+100nF,C2,C_0603_1608Metric,,1
+200K,R2,R_0603_1608Metric,,1
