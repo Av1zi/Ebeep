@@ -10,12 +10,12 @@ Two handheld wireless devices that can message each other and play games, built 
 
 ---
 
-## 3D Render Showcase
+## Project Showcase
 
+### 3d render
+https://github.com/user-attachments/assets/a6d2f698-0696-4dca-adf1-06d3810ce39c
 
-
-*walkthrough:*
-
+### walkthrough
 https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 
 ---
@@ -72,14 +72,19 @@ The device spends most of its time in deep sleep, waking every 30 seconds to che
 
 ## PCB
 
-A custom PCB has been fully designed and routed in KiCad to replace the hand-wired perfboard build. It's not ordered/fabricated yet, so the current build instructions below are still perfboard-based - the PCB is a planned upgrade for a future revision.
+A custom PCB has been fully designed and routed in KiCad to replace the hand-wired perfboard build. It's not ordered/fabricated yet, so the current build instructions below are still perfboard-based — the PCB is a planned upgrade for a future revision.
+
+> [!WARNING]
+> The PCB has not been fitted or tested against the STL case files in this repo. If you order and populate it, expect to redesign the case (or at least the mounting points) to fit - it is **not** a drop-in replacement yet.
+
 
 ---
 
 ## Building Your Own
 
 ### Electrical Diagram
-<img width="2400" height="2400" alt="Ebeep wiring diagram" src="https://github.com/user-attachments/assets/2caf1f5a-6e71-49ab-91ef-3e4e569b0644" />
+<img width="2400" height="2400" alt="image" src="https://github.com/user-attachments/assets/5c826736-3398-4f3e-a769-e0afdf25947a" />
+
 
 ### Building Instructions
 1. 3D print the files from the `STL` folder
