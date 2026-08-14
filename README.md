@@ -10,12 +10,12 @@ Two handheld wireless devices that can message each other and play games, built 
 
 ---
 
-## 3D Render Showcase
+## Project Showcase
 
+### 3d render
+https://github.com/user-attachments/assets/a6d2f698-0696-4dca-adf1-06d3810ce39c
 
-
-*walkthrough:*
-
+### walkthrough
 https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 
 ---
@@ -24,10 +24,10 @@ https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 
 - **Messaging** - 3-button scrollable alphabet, double-space to send
 - **Games** - TicTacToe, Connect 4, and Blackjack, all multiplayer over MQTT
-- **E-Ink display** - always-on, ultra low power, 2.9"
+- **E-Ink display** - 2.9" screen and low power consumption
 - **Battery powered** - LiPo with USB-C charging, percentage always visible
 - **Deep sleep** - wakes on a timer or button press to maximise battery life
-- **Long range** - talks over WiFi/MQTT, so both devices work from anywhere with an internet connection, not just near each other
+- **Long range** - talks over WiFi/MQTT, so both devices work from anywhere with an internet connection
 
 ---
 
@@ -47,10 +47,14 @@ https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 ## How It Works
 
 ### Communication
-Both devices connect to WiFi and talk through a private MQTT broker. Each device subscribes to its own topic and publishes to the other's, so messages and game moves arrive in real time.
+Both devices connect to WiFi and talk through a private MQTT broker. Each device subscribes to its own topic and publishes to the other's.
 
 ### WiFi Setup
-On first boot the device creates a hotspot (`Ebeep_1_config` or `Ebeep_2_config`). Connect to it from any phone and a setup page pops up automatically - pick your network, enter the password, done. Credentials are saved to flash and never asked for again unless the connection fails.
+On first boot the device creates a hotspot (`Ebeep_1_config` or `Ebeep_2_config`). Connect to it from any phone and a setup page pops up automatically - pick your network, enter the password, done. Credentials are saved to flash and never asked for again unless the connection fails. see walkthrough below:
+
+https://github.com/user-attachments/assets/75ae72dc-5833-4c83-8c6c-1c9a049145ae
+
+
 
 ### Typing Interface
 - **Left / Right** - scroll through characters (`SPC A B C ... Z . ! ? <3`)
@@ -59,7 +63,6 @@ On first boot the device creates a hotspot (`Ebeep_1_config` or `Ebeep_2_config`
 - **DEL on empty** - exit compose
 
 ### Games
-All multiplayer games use a handshake over MQTT to sync state - no server-side logic, just the two devices talking directly to each other.
 
 - **TicTacToe** - classic 3×3, first message sent starts the match
 - **Connect 4** - 7×6 grid, gravity-based drop
@@ -72,26 +75,31 @@ The device spends most of its time in deep sleep, waking every 30 seconds to che
 
 ## PCB
 
-A custom PCB has been fully designed and routed in KiCad to replace the hand-wired perfboard build. It's not ordered/fabricated yet, so the current build instructions below are still perfboard-based - the PCB is a planned upgrade for a future revision.
+A custom PCB has been fully designed and routed in KiCad to replace the hand-wired perfboard build. It's not ordered/fabricated yet, so the current build instructions below are still perfboard based (the PCB is a planned upgrade for a future revision.)
+
+> [!WARNING]
+> The PCB has not been fitted or tested against the STL case files in this repo. If you order it, expect to redesign the case (or at least the mounting points) to fit. it is **not** a drop-in replacement yet.
+
 
 ---
 
 ## Building Your Own
 
 ### Electrical Diagram
-<img width="2400" height="2400" alt="Ebeep wiring diagram" src="https://github.com/user-attachments/assets/2caf1f5a-6e71-49ab-91ef-3e4e569b0644" />
+<img width="2400" height="2400" alt="image" src="https://github.com/user-attachments/assets/5c826736-3398-4f3e-a769-e0afdf25947a" />
+
 
 ### Building Instructions
 1. 3D print the files from the `CAD` folder
 2. Solder everything onto the perfboard following the electrical diagram above
 3. Flash the code (see **Setting Up the Code** below) and test before closing the case
 4. Fit the components into the case & add double-sided tape under the battery to secure it
-5. Press in the 4× M4 heated inserts, then screw the case shut with the M4×25 screws
+5. Press in the 4× M4 heated inserts, then screw the case shut with the M4 screws
 
 ### Setting Up the Code
 1. Change `DEVICE_NUM` to `1` on one device and `2` on the other
 2. Create `secret.h` with your MQTT broker credentials (excluded from the repo via `.gitignore`)
-3. Upload via PlatformIO — the `huge_app.csv` partition scheme is required
+3. Upload via PlatformIO - the `huge_app.csv` partition scheme is required
 4. On first boot, connect to the config hotspot (`Ebeep_1_config` or `Ebeep_2_config`) and enter your WiFi credentials
 
 ---
