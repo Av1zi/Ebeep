@@ -82,7 +82,7 @@ A custom PCB has been fully designed and routed in KiCad to replace the hand-wir
 <img width="2400" height="2400" alt="Ebeep wiring diagram" src="https://github.com/user-attachments/assets/2caf1f5a-6e71-49ab-91ef-3e4e569b0644" />
 
 ### Building Instructions
-1. 3D print the files from the `STL` folder
+1. 3D print the files from the `CAD` folder
 2. Solder everything onto the perfboard following the electrical diagram above
 3. Flash the code (see **Setting Up the Code** below) and test before closing the case
 4. Fit the components into the case & add double-sided tape under the battery to secure it
