@@ -1,6 +1,7 @@
 #pragma once
 
 #include <secret.h>  // HOTSPOT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_PASSWORD
+// not even needed can just write the values directly in config.h, but this keeps them out of git.
 
 // ═══════════════════════════════════════════════════════════════
 //  config.h - Hardware pins, layout constants, and app settings.

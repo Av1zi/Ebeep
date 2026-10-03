@@ -98,7 +98,7 @@ A custom PCB has been fully designed and routed in KiCad to replace the hand-wir
 
 ### Setting Up the Code
 1. Change `DEVICE_NUM` to `1` on one device and `2` on the other
-2. Create `secret.h` with your MQTT broker credentials (excluded from the repo via `.gitignore`)
+2. Copy `include/secret.example.h` to `include/secret.h` and fill in your MQTT broker credentials (`secret.h` is gitignored so it stays private)
 3. Upload via PlatformIO - the `huge_app.csv` partition scheme is required
 4. On first boot, connect to the config hotspot (`Ebeep_1_config` or `Ebeep_2_config`) and enter your WiFi credentials
 
