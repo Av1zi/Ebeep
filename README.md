@@ -69,7 +69,7 @@ https://github.com/user-attachments/assets/75ae72dc-5833-4c83-8c6c-1c9a049145ae
 - **Blackjack** - single-player, full ruleset with split, double, and a soft-17 dealer
 
 ### Power Management
-The device spends most of its time in deep sleep, waking every 30 seconds to check for messages. Night hours (00:00–08:00) and low battery stretch that to 2 minutes. Any button press or incoming message triggers a 10-minute active window before it goes back to sleep.
+The device spends most of its time in deep sleep, waking every 60 seconds to check for messages. Night hours (00:00–08:00) and low battery stretch that to 5 minutes, and with no WiFi around the interval backs off further. Messages are sent as retained MQTT messages, so nothing is lost while the other device sleeps. A wake takes about a second or two: it reconnects to the last known access point without scanning, grabs any waiting message, turns the radio off, and only refreshes the e-ink if something on screen actually changed. A new message is drawn (unread dot) and the device goes straight back to sleep; a button press gives a 3-minute active window. All of these are tunable in `config.h`.
 
 ---
 

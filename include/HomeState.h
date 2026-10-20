@@ -34,7 +34,7 @@ void drawHome() {
 
 void handleHomeInput(bool leftPressed, bool midPressed, bool rightPressed) {
   if (leftPressed) {
-    hasUnreadMessage = false;
+    markInboxRead();
     currentState     = STATE_INBOX;
     needRefresh      = true;
   } else if (midPressed) {

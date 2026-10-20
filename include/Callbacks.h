@@ -1,5 +1,6 @@
 #pragma once
 #include <esp_sleep.h>
+#include <esp_wifi.h>
 #include <time.h>
 
 // ═══════════════════════════════════════════════════════════════
@@ -11,7 +12,7 @@
 //  Must be included AFTER all state files.
 // ═══════════════════════════════════════════════════════════════
 
-static float battVoltageEma = 0;  // mV, actual pack voltage (post-divider math)
+RTC_DATA_ATTR static float battVoltageEma = 0;  // mV, actual pack voltage (post-divider math). Kept across deep sleep so the % doesn't jump around between wakes
 
 void updateBattery() {
   // 8 samples is enough noise averaging on its own — the EMA below does
@@ -175,15 +176,26 @@ void refreshDisplay() {
 //  Power Management
 //
 //  Tiers, checked in priority order:
-//    1. Active   — no deep sleep, WiFi modem-sleep only, for
-//                  ACTIVE_TIMEOUT_MS after a button press or message.
+//    1. Active   — no deep sleep, WiFi modem-sleep, for
+//                  ACTIVE_TIMEOUT_MS after a button press.
 //    2. Low batt — wake every WAKE_INTERVAL_LOWBATT_S  (batt < LOW_BATT_PCT)
 //    3. Night    — wake every WAKE_INTERVAL_NIGHT_S    (00:00-08:00)
 //    4. Default  — wake every WAKE_INTERVAL_DEFAULT_S
+//
+//  A timer wake is kept as short as possible: fast WiFi reconnect,
+//  grab the retained inbox message, radio off, and only touch the
+//  e-ink if something on it actually changed.
 // ═══════════════════════════════════════════════════════════════
 
-RTC_DATA_ATTR bool clockSynced = false;  // NTP only needs to succeed once — RTC keeps ticking through deep sleep
-RTC_DATA_ATTR bool wifiWasOk   = true;   // persists across deep sleep — lets quickCheckAndMaybeSleep() tell if connectivity flipped since the last wake
+RTC_DATA_ATTR time_t  lastClockSync  = 0;   // RTC keeps ticking through deep sleep, but drifts — re-sync every CLOCK_RESYNC_S
+RTC_DATA_ATTR uint8_t wifiFailStreak = 0;   // consecutive timer wakes without WiFi, drives the backoff
+RTC_DATA_ATTR int32_t cachedChannel  = 0;   // 0 = nothing cached, do a normal scan
+RTC_DATA_ATTR uint8_t cachedBssid[6];
+
+bool displayAwake      = false;  // display.init() ran since this boot
+bool newInboxMessage   = false;  // a genuinely new message arrived this boot
+bool pendingInboxClear = false;  // retained inbox copy still needs wiping on the broker
+RTC_DATA_ATTR bool inboxRetainCleared = true;  // broker has no retained copy of lastReceivedMessage
 
 bool isNightHours() {
   time_t now = time(nullptr);
@@ -194,16 +206,26 @@ bool isNightHours() {
 }
 
 void syncNightClock() {
-  if (clockSynced) return;
+  if (lastClockSync != 0 && time(nullptr) - lastClockSync < (time_t)CLOCK_RESYNC_S) return;
   configTzTime(TZ_STRING, "pool.ntp.org", "time.nist.gov");
   struct tm t;
-  if (getLocalTime(&t, 2000)) clockSynced = true;
+  if (getLocalTime(&t, 2000)) lastClockSync = time(nullptr);
 }
 
 unsigned long currentWakeIntervalS() {
-  if (batteryPct < LOW_BATT_PCT) return WAKE_INTERVAL_LOWBATT_S;
-  if (isNightHours())            return WAKE_INTERVAL_NIGHT_S;
-  return WAKE_INTERVAL_DEFAULT_S;
+  unsigned long s = WAKE_INTERVAL_DEFAULT_S;
+  if (batteryPct < LOW_BATT_PCT) s = WAKE_INTERVAL_LOWBATT_S;
+  else if (isNightHours())       s = WAKE_INTERVAL_NIGHT_S;
+  // No WiFi around (out of range, router off) — every failed wake burns a full
+  // connect timeout, so back off instead of hammering it.
+  return s << min<uint8_t>(wifiFailStreak, WIFI_FAIL_BACKOFF_MAX);
+}
+
+void initDisplay() {
+  if (displayAwake) return;
+  display.init(115200, true, 50, false);
+  display.setRotation(3);
+  displayAwake = true;
 }
 
 // Cheap periodic refresh (battery %, WiFi/MQTT icons only). Content is left
@@ -219,22 +241,81 @@ void refreshStatusBarOnly() {
   } while (display.nextPage());
 }
 
+// Remember which AP/channel we're on so the next wake can skip the scan.
+void cacheWifiAp() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  memcpy(cachedBssid, WiFi.BSSID(), sizeof(cachedBssid));
+  cachedChannel = WiFi.channel();
+}
+
 // WiFi with a hard timeout instead of WiFiManager's blocking portal —
 // credentials are already saved by now, this is just "is the radio good".
+// Uses the cached BSSID/channel first, which skips the ~1-2 s channel scan.
 bool quickWifiConnect() {
   WiFi.mode(WIFI_STA);
-  WiFi.begin();
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
-    delay(50);
+
+  wifi_config_t conf;
+  if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK || conf.sta.ssid[0] == '\0') return false;
+  char ssid[33] = {0}, pass[65] = {0};
+  memcpy(ssid, conf.sta.ssid,     sizeof(conf.sta.ssid));
+  memcpy(pass, conf.sta.password, sizeof(conf.sta.password));
+
+  // RAM only — the channel/BSSID pin must never end up in the saved config.
+  esp_wifi_set_storage(WIFI_STORAGE_RAM);
+
+  for (uint8_t attempt = 0; attempt < 2; attempt++) {
+    const bool useCache = (attempt == 0 && cachedChannel > 0);
+    if (attempt == 1 && cachedChannel == 0) break;   // already did the plain attempt
+    if (attempt == 1) { cachedChannel = 0; WiFi.disconnect(); }
+
+    if (useCache) WiFi.begin(ssid, pass, cachedChannel, cachedBssid);
+    else          WiFi.begin(ssid, pass);
+
+    const unsigned long start = millis();
+    const unsigned long limit = useCache ? WIFI_CONNECT_TIMEOUT_MS / 2 : WIFI_CONNECT_TIMEOUT_MS;
+    while (WiFi.status() != WL_CONNECTED && millis() - start < limit) delay(20);
+    if (WiFi.status() == WL_CONNECTED) break;
   }
-  return WiFi.status() == WL_CONNECTED;
+
+  esp_wifi_set_storage(WIFI_STORAGE_FLASH);  // so the WiFiManager portal can still save new creds
+  const bool ok = (WiFi.status() == WL_CONNECTED);
+  if (ok) cacheWifiAp();
+  return ok;
+}
+
+// Wipes the retained copy of our inbox on the broker, so the next wake
+// doesn't get handed the same message again.
+void flushInboxClear() {
+  if (!pendingInboxClear || !mqttClient.connected()) return;
+  static char inboxTopic[24] = "";
+  if (inboxTopic[0] == '\0') snprintf(inboxTopic, sizeof(inboxTopic), "%s/inbox", BEEPER_ID);
+  if (mqttClient.publish(inboxTopic, "", true)) {
+    pendingInboxClear  = false;
+    inboxRetainCleared = true;
+  }
+}
+
+void markInboxRead() {
+  hasUnreadMessage  = false;
+  pendingInboxClear = true;
+  flushInboxClear();   // if we're offline, loop() retries once MQTT is back
+}
+
+bool anyButtonDown() {
+  return digitalRead(BTN_LEFT) == LOW || digitalRead(BTN_SELECT) == LOW || digitalRead(BTN_RIGHT) == LOW;
 }
 
 // Never returns — drops the chip into deep sleep, waking on a timer
 // or on a BTN_LEFT / BTN_SELECT press.
 void enterDeepSleep(unsigned long seconds) {
+  if (mqttClient.connected()) mqttClient.disconnect();   // flushes anything we just published
   WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+
+  // Put the panel's controller into its own deep sleep. Without this the booster
+  // stays powered after a partial refresh and drains the battery the whole night.
+  if (displayAwake) display.hibernate();
+
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // keeps the button pull-ups powered during sleep
 
   esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
@@ -244,41 +325,43 @@ void enterDeepSleep(unsigned long seconds) {
   esp_deep_sleep_start();
 }
 
-bool quickCheckAndMaybeSleep() {
-  updateBattery();
-
-  bool gotMessage = false;
-  bool wifiOk = quickWifiConnect();
-  if (wifiOk) {
-    wifiClient.setInsecure();
-    wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);
-    mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
-    if (connectMQTT()) {
-      unsigned long start = millis();
-      while (millis() - start < MQTT_LISTEN_WINDOW_MS) {
-        mqttClient.loop();
-        if (hasUnreadMessage) { gotMessage = true; break; }
-        delay(10);
-      }
+// Runs on a timer wake. Goes straight back to sleep unless someone is
+// waiting for us in a game or a button is being pressed — then it returns
+// with WiFi + MQTT already up and setup() carries on into active mode.
+void timerWakeCheck() {
+  const bool wifiOk = quickWifiConnect();
+  bool mqttOk = false;
+  if (wifiOk && connectMQTT()) {
+    mqttOk = true;
+    const unsigned long start = millis();
+    while (millis() - start < MQTT_LISTEN_WINDOW_MS && !newInboxMessage) {
+      mqttClient.loop();
+      delay(10);
     }
+    flushInboxClear();
   }
-  
-  if (gotMessage) return false;
+  wifiFailStreak = wifiOk ? 0 : min<uint8_t>(wifiFailStreak + 1, 8);
+  netWifiOk = wifiOk;
+  netMqttOk = mqttOk;
 
-  currentState = wifiOk ? STATE_HOME : STATE_WIFI;
+  if (TTT_hasOpponent || C4_hasOpponent || anyButtonDown()) return;
 
-  if (wifiOk != wifiWasOk) {
-    // Connectivity flipped since the last wake — worth a real redraw so the
-    // WiFi screen (or Home) actually shows, not just a stale battery %.
-    fastUpdate = false;
+  // Radio off before the (slow) e-ink refresh — nothing below needs it.
+  if (mqttClient.connected()) mqttClient.disconnect();
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+
+  const bool battMoved   = abs(batteryPct - shownBattPct) >= BATTERY_REDRAW_STEP;
+  const bool lowFlipped  = (batteryPct <= LOW_BATT_PCT) != (shownBattPct <= LOW_BATT_PCT);
+  const bool netFlipped  = (wifiOk != shownWifiOk) || (mqttOk != shownMqttOk);
+  if (newInboxMessage || battMoved || lowFlipped || netFlipped || shownBattPct < 0) {
+    currentState = wifiOk ? STATE_HOME : STATE_WIFI;
+    fastUpdate   = false;
+    initDisplay();
     refreshDisplay();
-  } else {
-    refreshStatusBarOnly();
   }
-  wifiWasOk = wifiOk;
 
   enterDeepSleep(currentWakeIntervalS());
-  return true;  // unreachable
 }
 
 bool sleepWouldLoseState() {
@@ -288,11 +371,27 @@ bool sleepWouldLoseState() {
 // Called every loop() tick. Drops to deep sleep once the active window
 // (ACTIVE_TIMEOUT_MS since the last button press or message) has elapsed.
 void handlePowerState() {
-  if (millis() - lastActivityMillis < ACTIVE_TIMEOUT_MS) return;
-  if (sleepWouldLoseState()) return;
+  const unsigned long idle = millis() - lastActivityMillis;
+  if (idle < ACTIVE_TIMEOUT_MS) return;
+
+  if (sleepWouldLoseState()) {
+    if (idle < IDLE_HARD_TIMEOUT_MS) return;
+    // Nobody has touched it in ages — drop the game / draft instead of
+    // keeping WiFi on all night waiting for a move that isn't coming.
+    if (inTicTacToe || TTT_pendingStart) leaveTicTacToe();
+    if (inConnect4  || C4_pendingStart)  leaveConnect4();
+    typedMessage[0] = '\0';
+    messageLen      = 0;
+    currentState    = STATE_HOME;
+    needRefresh     = true;
+  }
+
+  if (needRefresh) {
+    needRefresh = false;
+    refreshDisplay();
+  }
   enterDeepSleep(currentWakeIntervalS());
 }
-
 
 // ── MQTT Callbacks ────────────────────────────────────────────
 void gameReqHandler(char* payload) {
@@ -368,17 +467,32 @@ void gameReqHandler(char* payload) {
 
 void onMessageReceived(char* topic, byte* payload, unsigned int length) {
   payload[length] = '\0';
-  markActivity();
 
   const size_t idLen = strlen(BEEPER_ID);
   char* subTopic = topic + idLen;
 
   if (strcmp(subTopic, "/inbox") == 0) {
-    Serial.println("Got msg in Inbox");
+    // Empty payload = our own "clear retained" echoing back, not a message.
+    if (length == 0) { inboxRetainCleared = true; return; }
+
+    char incoming[MAX_MSG_LEN + 1];
     uint8_t msgLen = (length < MAX_MSG_LEN) ? (uint8_t)length : MAX_MSG_LEN;
-    memcpy(lastReceivedMessage, payload, msgLen);
-    lastReceivedMessage[msgLen] = '\0';
-    hasUnreadMessage = true;
+    memcpy(incoming, payload, msgLen);
+    incoming[msgLen] = '\0';
+
+    // The broker hands us the retained copy on every wake until it's cleared —
+    // that's the same message, not a new one, so don't wake up for it.
+    if (strcmp(incoming, lastReceivedMessage) == 0 && (hasUnreadMessage || !inboxRetainCleared)) {
+      if (!hasUnreadMessage) pendingInboxClear = true;   // read already, the clear just never made it
+      return;
+    }
+
+    Serial.println("Got msg in Inbox");
+    memcpy(lastReceivedMessage, incoming, msgLen + 1);
+    hasUnreadMessage   = true;
+    inboxRetainCleared = false;
+    newInboxMessage    = true;
+    markActivity();
     if (currentState == STATE_HOME) {
       needRefresh = true;
       fastUpdate  = true;
@@ -388,8 +502,10 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     }
   } else if (strcmp(subTopic, "/games") == 0) {
     Serial.println("Got msg in games");
+    markActivity();
     gameReqHandler((char*)payload);
   } else if (strncmp(subTopic, "/games/", 7) == 0) {
+    markActivity();
     if (strcmp(subTopic + 7, "TTT") == 0) {
       Serial.println("Got msg in TTT");
       checkTicTacToeMessages((char*)payload);

@@ -36,16 +36,21 @@ unsigned long lastReconnectAttempt = 0;
 bool lastWifiState = false;
 bool lastMqttState = false;
 
-void connectWifi(){
-  wm.setConfigPortalTimeout(0);  // portal never times out
+// WiFiManager setup hotspot (saved credentials are already tried by quickWifiConnect()).
+// The hotspot gives up after WIFI_PORTAL_TIMEOUT_S — left running it empties the battery overnight.
+bool connectWifi(){
+  wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT_S);
+  bool ok;
   if (sizeof(HOTSPOT_PASSWORD) > 1) {
-    wm.autoConnect(AP_NAME, AP_password);
+    ok = wm.autoConnect(AP_NAME, AP_password);
   } else {
-    wm.autoConnect(AP_NAME);
+    ok = wm.autoConnect(AP_NAME);
   }
-  while (WiFi.status() != WL_CONNECTED) delay(100);
+  if (!ok) return false;
   Serial.println("WiFi connected");
+  cacheWifiAp();
   lastWifiState = true;
+  return true;
 }
 
 // build once instead of allocating a String on every single reconnect attempt.
@@ -74,11 +79,17 @@ bool connectMQTT(){
 //  SETUP
 // ═══════════════════════════════════════════════════════════════
 void setup() {
+  // No delay here — this runs on every timer wake, and waiting for the
+  // serial monitor used to cost 2 s of awake time each time.
   Serial.begin(115200);
-  delay(2000);
   Serial.println("=== Ebeep Boot ===");
   currentState = STATE_WIFI;
   needRefresh  = true;
+
+  // configTzTime() only sets TZ for this boot — without this, night hours
+  // were checked in UTC after every deep sleep.
+  setenv("TZ", TZ_STRING, 1);
+  tzset();
 
   pinMode(EPD_CS,   OUTPUT);
   pinMode(EPD_DC,   OUTPUT);
@@ -89,33 +100,38 @@ void setup() {
   pinMode(BTN_RIGHT,  INPUT_PULLUP);
 
   SPI.begin();
-  display.init(115200, true, 50, false);
-  display.setRotation(3);
 
-  updateBattery();
+  updateBattery();   // before WiFi, so the reading isn't dragged down by TX current
   mqttClient.setServer(MQTT_SERVER_ADDR, MQTT_SERVER_PORT);
   mqttClient.setCallback(onMessageReceived);
-
-
-  bool wokeFromTimer = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
-  if (wokeFromTimer && quickCheckAndMaybeSleep()) return;
-
-  // ── WiFi ─────────────────────────────────────────────────
-  if (WiFi.status() != WL_CONNECTED) {
-    refreshDisplay();   // shows wifisate
-    needRefresh = false;
-    //wm.resetSettings();  // uncomment to erase save wifi credentials
-    connectWifi();
-  }
   wifiClient.setInsecure();
   wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);
   mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
+
+  // Usually sleeps again without ever touching the display.
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) timerWakeCheck();
+
+  initDisplay();
+
+  // ── WiFi ─────────────────────────────────────────────────
+  if (WiFi.status() != WL_CONNECTED && !quickWifiConnect()) {
+    netWifiOk = netMqttOk = false;
+    refreshDisplay();   // shows wifisate — only when we actually have to wait
+    needRefresh = true;
+    //wm.resetSettings();  // uncomment to erase save wifi credentials
+    if (!connectWifi()) enterDeepSleep(currentWakeIntervalS());  // nobody set it up, try again later
+  }
   WiFi.setAutoReconnect(true); // Let hardware handle background wifi reconnection
-  WiFi.setSleep(WIFI_PS_MIN_MODEM);
+  WiFi.setSleep(WIFI_PS_MAX_MODEM);
 
   // ── MQTT ─────────────────────────────────────────────────
   if (!mqttClient.connected()) connectMQTT();
-  syncNightClock();  // one-time NTP sync
+  syncNightClock();
+  netWifiOk = (WiFi.status() == WL_CONNECTED);
+  netMqttOk = mqttClient.connected();
+
+  // TLS handshake is done — 80 MHz is plenty for drawing and button polling.
+  setCpuFrequencyMhz(80);
 
   currentState = STATE_HOME;
   needRefresh  = true;
@@ -144,6 +160,8 @@ void loop() {
     if (!currentWifiState) wifiLostAt = now;   // outage just started
   }
   lastMqttState = currentMqttState;
+  netWifiOk     = currentWifiState;
+  netMqttOk     = currentMqttState;
 
   const bool fullyConnected = currentWifiState && currentMqttState;
 
@@ -171,6 +189,7 @@ void loop() {
   }
   else {
     mqttClient.loop();
+    flushInboxClear();
   }
 
   if (now - lastBatteryRead > BATTERY_READ_INTERVAL_MS) {
@@ -194,4 +213,8 @@ void loop() {
   }
 
   handlePowerState();
+
+  // Let the idle task park the CPU between polls instead of spinning flat out.
+  // 10 ms is still far quicker than any button press.
+  delay(10);
 }

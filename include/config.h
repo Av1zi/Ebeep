@@ -66,24 +66,32 @@
 #define BATTERY_MAX_MV            4200UL   // 100%
 #define BATTERY_READ_INTERVAL_MS  3000UL   // how often we sample the ADC
 #define BATTERY_EMA_ALPHA         0.15f
+#define BATTERY_REDRAW_STEP       2        // timer wakes only redraw the e-ink once the % moved this much
 
 // ── Power Management ──────────────────────────────────────────
-//   Active   : awake, WiFi modem-sleep only, for ACTIVE_TIMEOUT_MS
+//   Active   : awake, WiFi modem-sleep, for ACTIVE_TIMEOUT_MS after a button press
 //   Default  : deep sleep, wake every WAKE_INTERVAL_DEFAULT_S.
 //   Night    : deep sleep, wake every WAKE_INTERVAL_NIGHT_S
 //   Low batt : deep sleep, wake every WAKE_INTERVAL_LOWBATT_S (batt < LOW_BATT_PCT).
-#define WAKE_INTERVAL_DEFAULT_S   30UL
-#define WAKE_INTERVAL_NIGHT_S     120UL
-#define WAKE_INTERVAL_LOWBATT_S   120UL
-#define ACTIVE_TIMEOUT_MS         (10UL * 60 * 1000)   // stay awake this long after activity
+//   No WiFi  : the interval doubles per failed wake, up to 2^WIFI_FAIL_BACKOFF_MAX times.
+//   Messages are published retained, so nothing is lost while the other device sleeps —
+//   the interval only decides how quickly a new message shows up.
+#define WAKE_INTERVAL_DEFAULT_S   60UL
+#define WAKE_INTERVAL_NIGHT_S     300UL
+#define WAKE_INTERVAL_LOWBATT_S   300UL
+#define WIFI_FAIL_BACKOFF_MAX     3
+#define ACTIVE_TIMEOUT_MS         (3UL * 60 * 1000)    // stay awake this long after a button press
+#define IDLE_HARD_TIMEOUT_MS      (15UL * 60 * 1000)   // mid-game / mid-draft: give up and sleep after this
 #define STATUS_REFRESH_MS         (2UL * 60 * 1000)    // battery-only partial refresh cadence
-#define LOW_BATT_PCT              10                   // below this: 2min sleep tier + status bar warning
+#define LOW_BATT_PCT              10                   // below this: slower sleep tier + status bar warning
 #define NIGHT_START_HOUR          0
 #define NIGHT_END_HOUR            8
 // Default is Israel (IST/IDT);
 #define TZ_STRING                 "IST-2IDT,M3.4.4/26,M10.5.0"
+#define CLOCK_RESYNC_S            (12UL * 60 * 60)     // RTC drifts in deep sleep, re-sync NTP this often
 #define WIFI_CONNECT_TIMEOUT_MS   5000UL
-#define MQTT_LISTEN_WINDOW_MS     3000UL
+#define WIFI_PORTAL_TIMEOUT_S     300                  // setup hotspot gives up (and sleeps) after this
+#define MQTT_LISTEN_WINDOW_MS     1000UL               // retained messages arrive right after subscribing
  
 
 // ── Device Identity ───────────────────────────────────────────
@@ -116,8 +124,9 @@ constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
 
 
 // Defined in main.cpp but declared here so PowerState.h can call them
-void connectWifi();
+bool connectWifi();
 bool connectMQTT();
+void markInboxRead();
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -156,8 +165,10 @@ bool fastUpdate  = false;   // true  -> partial refresh (content only)
                             // false -> full refresh (status bar included)
 
 // ── Message buffers ───────────────────────────────────────────
-bool hasUnreadMessage                    = false;
-char lastReceivedMessage[MAX_MSG_LEN+1]  = "";
+// RTC_DATA_ATTR = survives deep sleep, so a retained message re-delivered
+// on every wake can be recognised as one we already have.
+RTC_DATA_ATTR bool hasUnreadMessage                    = false;
+RTC_DATA_ATTR char lastReceivedMessage[MAX_MSG_LEN+1]  = "";
 char typedMessage[MAX_MSG_LEN+1]         = "";
 uint8_t messageLen                       = 0;
 uint8_t currentLetterIdx                 = 0;
@@ -175,6 +186,16 @@ unsigned long lastBtnTime     = 0;
 unsigned long holdStartTime   = 0;
 unsigned long lastRepeatAt    = 0;
 int8_t        heldButton      = 0;   // 0=none, -1=left, +1=right
+
+// ── Network status shown in the status bar ────────────────────
+// Kept in variables (not read live) so a timer wake can draw them after the radio is off.
+bool netWifiOk = false;
+bool netMqttOk = false;
+
+// ── What the e-ink currently shows (survives deep sleep) ──────
+RTC_DATA_ATTR int8_t shownBattPct = -1;
+RTC_DATA_ATTR bool   shownWifiOk  = false;
+RTC_DATA_ATTR bool   shownMqttOk  = false;
 
 // ── Power state ────────────────────────────────────────────────
 unsigned long lastActivityMillis = 0;   // reset on any button press or message — see PowerState.h markActivity()

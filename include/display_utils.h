@@ -28,6 +28,9 @@ void drawCenteredText(int16_t cx, int16_t y, const char* text, const GFXfont* fo
 // draw the top part
 void drawStatusBar(int battPct) {
   battPct = constrain(battPct, 0, 100);
+  shownBattPct = battPct;
+  shownWifiOk  = netWifiOk;
+  shownMqttOk  = netMqttOk;
 
   // Title swaps to a warning below LOW_BATT_PCT — same slot, no layout changes needed.
   const char* title = (battPct <= LOW_BATT_PCT) ? "LOW BATT!" : "Ebeep";
@@ -61,7 +64,7 @@ void drawStatusBar(int battPct) {
   int16_t wx = textStartX - 32; // WiFi Icon X coordinate
 
   // Draw WiFi Status Icon (3 rising signal bars)
-  if (WiFi.status() == WL_CONNECTED) {
+  if (netWifiOk) {
     display.fillRect(wx,     iconY + 6, 2, 4,  GxEPD_BLACK);
     display.fillRect(wx + 4, iconY + 3, 2, 7,  GxEPD_BLACK);
     display.fillRect(wx + 8, iconY,     2, 10, GxEPD_BLACK);
@@ -79,7 +82,7 @@ void drawStatusBar(int battPct) {
   display.drawLine(mx + 4, iconY + 5, mx + 8, iconY,     GxEPD_BLACK);
   display.drawLine(mx + 8, iconY,     mx + 8, iconY + 10, GxEPD_BLACK);
   
-  if (!mqttClient.connected()) {
+  if (!netMqttOk) {
     // Strike-through line if disconnected
     display.drawLine(mx - 2, iconY + 10, mx + 10, iconY, GxEPD_BLACK);
   }

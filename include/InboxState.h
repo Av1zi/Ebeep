@@ -18,13 +18,8 @@ void drawInbox() {
 
 
 void handleInboxInput(bool leftPressed, bool midPressed, bool rightPressed) {
-  // Wipe retained copy on MQTT server if the user has read the message
-  if (hasUnreadMessage) {
-    static char inboxTopic[24] = "";
-    if (inboxTopic[0] == '\0') snprintf(inboxTopic, sizeof(inboxTopic), "%s/inbox", BEEPER_ID);
-    mqttClient.publish(inboxTopic, "", true);
-    hasUnreadMessage = false;
-  }
+  // A message arrived while the inbox was open — it's been seen now
+  if (hasUnreadMessage) markInboxRead();
   if (leftPressed) {
     currentState = STATE_HOME;
     needRefresh  = true;
