@@ -31,26 +31,25 @@
 //  Functions
 // ═══════════════════════════════════════════════════════════════
 
-WiFiManager wm;
 unsigned long lastReconnectAttempt = 0;
 bool lastWifiState = false;
 bool lastMqttState = false;
 
-// WiFiManager setup hotspot (saved credentials are already tried by quickWifiConnect()).
-// The hotspot gives up after WIFI_PORTAL_TIMEOUT_S — left running it empties the battery overnight.
+// Last network → every known network in range → setup hotspot.
+// Only gives the e-ink something to do if the quick reconnect doesn't land.
 bool connectWifi(){
-  wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT_S);
-  bool ok;
-  if (sizeof(HOTSPOT_PASSWORD) > 1) {
-    ok = wm.autoConnect(AP_NAME, AP_password);
-  } else {
-    ok = wm.autoConnect(AP_NAME);
+  const bool fastStarted = beginLastNetwork();
+  if (fastStarted && waitForWifi(1200)) {
+    cacheWifiAp();
+    return true;
   }
-  if (!ok) return false;
-  Serial.println("WiFi connected");
-  cacheWifiAp();
-  lastWifiState = true;
-  return true;
+
+  currentState = STATE_WIFI;
+  fastUpdate   = false;
+  refreshDisplay();   // "Connecting..." — runs while the radio keeps trying
+
+  if (connectKnownWifi(fastStarted)) return true;
+  return runWifiPortal();
 }
 
 // build once instead of allocating a String on every single reconnect attempt.
@@ -79,17 +78,12 @@ bool connectMQTT(){
 //  SETUP
 // ═══════════════════════════════════════════════════════════════
 void setup() {
-  // No delay here — this runs on every timer wake, and waiting for the
-  // serial monitor used to cost 2 s of awake time each time.
+  // Every boot is a button wake (or power-on) — there's no timer wake.
+  // No serial-monitor delay: it used to cost 2 s of awake time per wake.
   Serial.begin(115200);
   Serial.println("=== Ebeep Boot ===");
   currentState = STATE_WIFI;
   needRefresh  = true;
-
-  // configTzTime() only sets TZ for this boot — without this, night hours
-  // were checked in UTC after every deep sleep.
-  setenv("TZ", TZ_STRING, 1);
-  tzset();
 
   pinMode(EPD_CS,   OUTPUT);
   pinMode(EPD_DC,   OUTPUT);
@@ -108,25 +102,17 @@ void setup() {
   wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);
   mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
 
-  // Usually sleeps again without ever touching the display.
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) timerWakeCheck();
-
+  loadKnownNetworks();
   initDisplay();
 
   // ── WiFi ─────────────────────────────────────────────────
-  if (WiFi.status() != WL_CONNECTED && !quickWifiConnect()) {
-    netWifiOk = netMqttOk = false;
-    refreshDisplay();   // shows wifisate — only when we actually have to wait
-    needRefresh = true;
-    //wm.resetSettings();  // uncomment to erase save wifi credentials
-    if (!connectWifi()) enterDeepSleep(currentWakeIntervalS());  // nobody set it up, try again later
-  }
+  if (!connectWifi()) enterDeepSleep();   // portal cancelled / timed out — press again to retry
+  lastWifiState = true;
   WiFi.setAutoReconnect(true); // Let hardware handle background wifi reconnection
   WiFi.setSleep(WIFI_PS_MAX_MODEM);
 
   // ── MQTT ─────────────────────────────────────────────────
   if (!mqttClient.connected()) connectMQTT();
-  syncNightClock();
   netWifiOk = (WiFi.status() == WL_CONNECTED);
   netMqttOk = mqttClient.connected();
 
@@ -136,6 +122,12 @@ void setup() {
   currentState = STATE_HOME;
   needRefresh  = true;
   markActivity();
+
+  // The press that woke us may still be held — don't let it count as a
+  // press on the Home screen.
+  lastLeft  = digitalRead(BTN_LEFT);
+  lastMid   = digitalRead(BTN_SELECT);
+  lastRight = digitalRead(BTN_RIGHT);
 }
 
 // ═══════════════════════════════════════════════════════════════

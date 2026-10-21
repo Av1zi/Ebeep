@@ -66,33 +66,22 @@
 #define BATTERY_MAX_MV            4200UL   // 100%
 #define BATTERY_READ_INTERVAL_MS  3000UL   // how often we sample the ADC
 #define BATTERY_EMA_ALPHA         0.15f
-#define BATTERY_REDRAW_STEP       2        // timer wakes only redraw the e-ink once the % moved this much
 
 // ── Power Management ──────────────────────────────────────────
-//   Active   : awake, WiFi modem-sleep, for ACTIVE_TIMEOUT_MS after a button press
-//   Default  : deep sleep, wake every WAKE_INTERVAL_DEFAULT_S.
-//   Night    : deep sleep, wake every WAKE_INTERVAL_NIGHT_S
-//   Low batt : deep sleep, wake every WAKE_INTERVAL_LOWBATT_S (batt < LOW_BATT_PCT).
-//   No WiFi  : the interval doubles per failed wake, up to 2^WIFI_FAIL_BACKOFF_MAX times.
-//   Messages are published retained, so nothing is lost while the other device sleeps —
-//   the interval only decides how quickly a new message shows up.
-#define WAKE_INTERVAL_DEFAULT_S   60UL
-#define WAKE_INTERVAL_NIGHT_S     300UL
-#define WAKE_INTERVAL_LOWBATT_S   300UL
-#define WIFI_FAIL_BACKOFF_MAX     3
+//   Asleep : deep sleep with "Sleeping" on screen, no timer wake at all.
+//            BTN_LEFT / BTN_SELECT wakes it up and it connects.
+//   Active : awake, WiFi modem-sleep, for ACTIVE_TIMEOUT_MS after the last press.
+//   Messages are published retained, so the last one sent while we slept
+//   is waiting on the broker when we wake.
 #define ACTIVE_TIMEOUT_MS         (3UL * 60 * 1000)    // stay awake this long after a button press
 #define IDLE_HARD_TIMEOUT_MS      (15UL * 60 * 1000)   // mid-game / mid-draft: give up and sleep after this
 #define STATUS_REFRESH_MS         (2UL * 60 * 1000)    // battery-only partial refresh cadence
-#define LOW_BATT_PCT              10                   // below this: slower sleep tier + status bar warning
-#define NIGHT_START_HOUR          0
-#define NIGHT_END_HOUR            8
-// Default is Israel (IST/IDT);
-#define TZ_STRING                 "IST-2IDT,M3.4.4/26,M10.5.0"
-#define CLOCK_RESYNC_S            (12UL * 60 * 60)     // RTC drifts in deep sleep, re-sync NTP this often
-#define WIFI_CONNECT_TIMEOUT_MS   5000UL
+#define LOW_BATT_PCT              10                   // below this: status bar warning
+#define WIFI_FAST_CONNECT_MS      2500UL               // reconnect to last network (no scan)
+#define WIFI_CONNECT_TIMEOUT_MS   5000UL               // per known network found in a scan
 #define WIFI_PORTAL_TIMEOUT_S     300                  // setup hotspot gives up (and sleeps) after this
-#define MQTT_LISTEN_WINDOW_MS     1000UL               // retained messages arrive right after subscribing
- 
+#define MAX_KNOWN_NETWORKS        5                    // remembered WiFi networks, oldest dropped first
+
 
 // ── Device Identity ───────────────────────────────────────────
 //  THE ONLY LINE TO CHANGE BETWEEN DEVICES.
@@ -124,7 +113,6 @@ constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
 
 
 // Defined in main.cpp but declared here so PowerState.h can call them
-bool connectWifi();
 bool connectMQTT();
 void markInboxRead();
 
@@ -154,7 +142,9 @@ enum ScreenState : uint8_t {
   STATE_GAMES,
   STATE_TICTACTOE,
   STATE_BLACKJACK,
-  STATE_CONNECT4
+  STATE_CONNECT4,
+  STATE_PORTAL,   // setup hotspot open, no known WiFi in range
+  STATE_SLEEP     // drawn right before deep sleep
 };
 
 ScreenState currentState = STATE_WIFI;
@@ -188,14 +178,9 @@ unsigned long lastRepeatAt    = 0;
 int8_t        heldButton      = 0;   // 0=none, -1=left, +1=right
 
 // ── Network status shown in the status bar ────────────────────
-// Kept in variables (not read live) so a timer wake can draw them after the radio is off.
+// Kept in variables (not read live) so the sleep screen can draw them after the radio is off.
 bool netWifiOk = false;
 bool netMqttOk = false;
-
-// ── What the e-ink currently shows (survives deep sleep) ──────
-RTC_DATA_ATTR int8_t shownBattPct = -1;
-RTC_DATA_ATTR bool   shownWifiOk  = false;
-RTC_DATA_ATTR bool   shownMqttOk  = false;
 
 // ── Power state ────────────────────────────────────────────────
 unsigned long lastActivityMillis = 0;   // reset on any button press or message — see PowerState.h markActivity()

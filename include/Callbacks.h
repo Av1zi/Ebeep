@@ -1,7 +1,7 @@
 #pragma once
 #include <esp_sleep.h>
 #include <esp_wifi.h>
-#include <time.h>
+#include <Preferences.h>
 
 // ═══════════════════════════════════════════════════════════════
 //  Callbacks.h
@@ -123,6 +123,8 @@ void drawCurrentScreen() {
     case STATE_SENT:      drawSent();      break;
     case STATE_GAMES:     drawGames();     break;
     case STATE_WIFI:      drawWifi();      break;
+    case STATE_PORTAL:    drawPortal();    break;
+    case STATE_SLEEP:     drawSleeping();  break;
     case STATE_TICTACTOE: drawTicTacToe(); break;
     case STATE_CONNECT4:  drawConnect4();  break;
     case STATE_BLACKJACK: drawBlackjack(); break;
@@ -175,51 +177,18 @@ void refreshDisplay() {
 // ═══════════════════════════════════════════════════════════════
 //  Power Management
 //
-//  Tiers, checked in priority order:
-//    1. Active   — no deep sleep, WiFi modem-sleep, for
-//                  ACTIVE_TIMEOUT_MS after a button press.
-//    2. Low batt — wake every WAKE_INTERVAL_LOWBATT_S  (batt < LOW_BATT_PCT)
-//    3. Night    — wake every WAKE_INTERVAL_NIGHT_S    (00:00-08:00)
-//    4. Default  — wake every WAKE_INTERVAL_DEFAULT_S
-//
-//  A timer wake is kept as short as possible: fast WiFi reconnect,
-//  grab the retained inbox message, radio off, and only touch the
-//  e-ink if something on it actually changed.
+//  The device is deep asleep unless someone is using it:
+//    - A press on BTN_LEFT / BTN_SELECT wakes it and it connects.
+//    - It stays awake for ACTIVE_TIMEOUT_MS after the last press
+//      (or incoming message), then shows "Sleeping" and powers down.
+//  There is no timer wake, so a sleeping device draws only the
+//  chip's deep-sleep current. Messages are retained on the broker,
+//  so the last one is waiting for us on the next wake.
 // ═══════════════════════════════════════════════════════════════
 
-RTC_DATA_ATTR time_t  lastClockSync  = 0;   // RTC keeps ticking through deep sleep, but drifts — re-sync every CLOCK_RESYNC_S
-RTC_DATA_ATTR uint8_t wifiFailStreak = 0;   // consecutive timer wakes without WiFi, drives the backoff
-RTC_DATA_ATTR int32_t cachedChannel  = 0;   // 0 = nothing cached, do a normal scan
-RTC_DATA_ATTR uint8_t cachedBssid[6];
-
 bool displayAwake      = false;  // display.init() ran since this boot
-bool newInboxMessage   = false;  // a genuinely new message arrived this boot
 bool pendingInboxClear = false;  // retained inbox copy still needs wiping on the broker
 RTC_DATA_ATTR bool inboxRetainCleared = true;  // broker has no retained copy of lastReceivedMessage
-
-bool isNightHours() {
-  time_t now = time(nullptr);
-  if (now < 100000) return false;
-  struct tm t;
-  localtime_r(&now, &t);
-  return t.tm_hour >= NIGHT_START_HOUR && t.tm_hour < NIGHT_END_HOUR;
-}
-
-void syncNightClock() {
-  if (lastClockSync != 0 && time(nullptr) - lastClockSync < (time_t)CLOCK_RESYNC_S) return;
-  configTzTime(TZ_STRING, "pool.ntp.org", "time.nist.gov");
-  struct tm t;
-  if (getLocalTime(&t, 2000)) lastClockSync = time(nullptr);
-}
-
-unsigned long currentWakeIntervalS() {
-  unsigned long s = WAKE_INTERVAL_DEFAULT_S;
-  if (batteryPct < LOW_BATT_PCT) s = WAKE_INTERVAL_LOWBATT_S;
-  else if (isNightHours())       s = WAKE_INTERVAL_NIGHT_S;
-  // No WiFi around (out of range, router off) — every failed wake burns a full
-  // connect timeout, so back off instead of hammering it.
-  return s << min<uint8_t>(wifiFailStreak, WIFI_FAIL_BACKOFF_MAX);
-}
 
 void initDisplay() {
   if (displayAwake) return;
@@ -241,48 +210,182 @@ void refreshStatusBarOnly() {
   } while (display.nextPage());
 }
 
-// Remember which AP/channel we're on so the next wake can skip the scan.
+bool anyButtonDown() {
+  return digitalRead(BTN_LEFT) == LOW || digitalRead(BTN_SELECT) == LOW || digitalRead(BTN_RIGHT) == LOW;
+}
+
+
+// ── Known WiFi networks ───────────────────────────────────────
+// Every network that ever worked is kept in flash (most recent first),
+// so moving between home / work / a phone hotspot needs no portal.
+
+struct KnownNetwork {
+  char ssid[33];
+  char pass[65];
+};
+
+KnownNetwork knownNets[MAX_KNOWN_NETWORKS];
+uint8_t      knownCount = 0;
+Preferences  wifiPrefs;
+
+// Last network that worked — survives deep sleep, so the usual case
+// (same place as last time) connects without scanning.
+RTC_DATA_ATTR char    cachedSsid[33] = "";
+RTC_DATA_ATTR int32_t cachedChannel  = 0;
+RTC_DATA_ATTR uint8_t cachedBssid[6];
+
+void loadKnownNetworks() {
+  wifiPrefs.begin("wifi", true);
+  knownCount = min<uint8_t>(wifiPrefs.getUChar("n", 0), MAX_KNOWN_NETWORKS);
+  for (uint8_t i = 0; i < knownCount; i++) {
+    char key[4];
+    snprintf(key, sizeof(key), "s%u", i);
+    wifiPrefs.getString(key, knownNets[i].ssid, sizeof(knownNets[i].ssid));
+    snprintf(key, sizeof(key), "p%u", i);
+    wifiPrefs.getString(key, knownNets[i].pass, sizeof(knownNets[i].pass));
+  }
+  wifiPrefs.end();
+}
+
+void storeKnownNetworks() {
+  wifiPrefs.begin("wifi", false);
+  wifiPrefs.putUChar("n", knownCount);
+  for (uint8_t i = 0; i < knownCount; i++) {
+    char key[4];
+    snprintf(key, sizeof(key), "s%u", i);
+    wifiPrefs.putString(key, knownNets[i].ssid);
+    snprintf(key, sizeof(key), "p%u", i);
+    wifiPrefs.putString(key, knownNets[i].pass);
+  }
+  wifiPrefs.end();
+}
+
+// Moves (or adds) a network to the front of the list. The oldest one falls
+// off once the list is full.
+void rememberNetwork(const char* ssid, const char* pass) {
+  if (ssid[0] == '\0') return;
+  int8_t found = -1;
+  for (uint8_t i = 0; i < knownCount; i++) {
+    if (strcmp(knownNets[i].ssid, ssid) == 0) { found = i; break; }
+  }
+  if (found == 0 && strcmp(knownNets[0].pass, pass) == 0) return;  // already first, nothing to write
+
+  const uint8_t shiftFrom = (found >= 0) ? found : min<uint8_t>(knownCount, MAX_KNOWN_NETWORKS - 1);
+  for (int8_t i = shiftFrom; i > 0; i--) knownNets[i] = knownNets[i - 1];
+  if (found < 0 && knownCount < MAX_KNOWN_NETWORKS) knownCount++;
+
+  strlcpy(knownNets[0].ssid, ssid, sizeof(knownNets[0].ssid));
+  strlcpy(knownNets[0].pass, pass, sizeof(knownNets[0].pass));
+  storeKnownNetworks();
+}
+
 void cacheWifiAp() {
   if (WiFi.status() != WL_CONNECTED) return;
+  strlcpy(cachedSsid, WiFi.SSID().c_str(), sizeof(cachedSsid));
   memcpy(cachedBssid, WiFi.BSSID(), sizeof(cachedBssid));
   cachedChannel = WiFi.channel();
 }
 
-// WiFi with a hard timeout instead of WiFiManager's blocking portal —
-// credentials are already saved by now, this is just "is the radio good".
-// Uses the cached BSSID/channel first, which skips the ~1-2 s channel scan.
-bool quickWifiConnect() {
-  WiFi.mode(WIFI_STA);
-
-  wifi_config_t conf;
-  if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK || conf.sta.ssid[0] == '\0') return false;
-  char ssid[33] = {0}, pass[65] = {0};
-  memcpy(ssid, conf.sta.ssid,     sizeof(conf.sta.ssid));
-  memcpy(pass, conf.sta.password, sizeof(conf.sta.password));
-
-  // RAM only — the channel/BSSID pin must never end up in the saved config.
-  esp_wifi_set_storage(WIFI_STORAGE_RAM);
-
-  for (uint8_t attempt = 0; attempt < 2; attempt++) {
-    const bool useCache = (attempt == 0 && cachedChannel > 0);
-    if (attempt == 1 && cachedChannel == 0) break;   // already did the plain attempt
-    if (attempt == 1) { cachedChannel = 0; WiFi.disconnect(); }
-
-    if (useCache) WiFi.begin(ssid, pass, cachedChannel, cachedBssid);
-    else          WiFi.begin(ssid, pass);
-
-    const unsigned long start = millis();
-    const unsigned long limit = useCache ? WIFI_CONNECT_TIMEOUT_MS / 2 : WIFI_CONNECT_TIMEOUT_MS;
-    while (WiFi.status() != WL_CONNECTED && millis() - start < limit) delay(20);
-    if (WiFi.status() == WL_CONNECTED) break;
+const KnownNetwork* findKnown(const char* ssid) {
+  for (uint8_t i = 0; i < knownCount; i++) {
+    if (strcmp(knownNets[i].ssid, ssid) == 0) return &knownNets[i];
   }
-
-  esp_wifi_set_storage(WIFI_STORAGE_FLASH);  // so the WiFiManager portal can still save new creds
-  const bool ok = (WiFi.status() == WL_CONNECTED);
-  if (ok) cacheWifiAp();
-  return ok;
+  return nullptr;
 }
 
+bool waitForWifi(unsigned long timeoutMs) {
+  const unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) delay(20);
+  return WiFi.status() == WL_CONNECTED;
+}
+
+// Step 1 — kick off a connect to the last network that worked, without
+// waiting. Lets the "Connecting..." screen draw while the radio works.
+bool beginLastNetwork() {
+  WiFi.mode(WIFI_STA);
+
+  // First boot after updating: pick up the network the old firmware /
+  // WiFiManager saved, so nobody has to go through the portal again.
+  if (knownCount == 0) {
+    wifi_config_t conf;
+    if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK && conf.sta.ssid[0] != '\0') {
+      char ssid[33] = {0}, pass[65] = {0};
+      memcpy(ssid, conf.sta.ssid,     sizeof(conf.sta.ssid));
+      memcpy(pass, conf.sta.password, sizeof(conf.sta.password));
+      rememberNetwork(ssid, pass);
+    }
+  }
+  // Our own list is the source of truth — keep the driver from rewriting
+  // its flash copy (channel/BSSID pins included) on every connect.
+  esp_wifi_set_storage(WIFI_STORAGE_RAM);
+
+  const KnownNetwork* last = (cachedChannel > 0) ? findKnown(cachedSsid) : nullptr;
+  if (!last) return false;
+  WiFi.begin(last->ssid, last->pass, cachedChannel, cachedBssid);
+  return true;
+}
+
+// Step 2 — finish the fast attempt, then scan and try every known network
+// in range, strongest first.
+bool connectKnownWifi(bool fastAttemptStarted) {
+  if (fastAttemptStarted && waitForWifi(WIFI_FAST_CONNECT_MS)) { cacheWifiAp(); return true; }
+  cachedChannel = 0;   // that AP isn't around (or changed) — don't try it blind next time
+  if (knownCount == 0) return false;
+
+  WiFi.disconnect();
+  const int16_t found = WiFi.scanNetworks();   // the driver returns them strongest first
+  for (int16_t i = 0; i < found; i++) {
+    const KnownNetwork* net = findKnown(WiFi.SSID(i).c_str());
+    if (!net) continue;
+    Serial.printf("Trying %s\n", net->ssid);
+    WiFi.begin(net->ssid, net->pass, WiFi.channel(i), WiFi.BSSID(i));
+    if (waitForWifi(WIFI_CONNECT_TIMEOUT_MS)) {
+      WiFi.scanDelete();
+      rememberNetwork(net->ssid, net->pass);   // most recently used goes to the front
+      cacheWifiAp();
+      return true;
+    }
+    WiFi.disconnect();
+  }
+  WiFi.scanDelete();
+  return false;
+}
+
+// Step 3 — nothing known in range: open the setup hotspot and say so on
+// screen. Any button press cancels it; it also gives up on its own after
+// WIFI_PORTAL_TIMEOUT_S. Returns true once the user picked a network.
+WiFiManager wm;
+
+bool runWifiPortal() {
+  currentState = STATE_PORTAL;
+  fastUpdate   = false;
+  refreshDisplay();
+
+  wm.setConfigPortalBlocking(false);
+  wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT_S);
+  if (sizeof(HOTSPOT_PASSWORD) > 1) wm.startConfigPortal(AP_NAME, AP_password);
+  else                              wm.startConfigPortal(AP_NAME);
+
+  const unsigned long start = millis();
+  bool armed = !anyButtonDown();   // ignore the press that woke us until it's released
+  while (true) {
+    if (wm.process()) break;   // connected with the new credentials
+    if (!wm.getConfigPortalActive() || millis() - start > WIFI_PORTAL_TIMEOUT_S * 1000UL) return false;
+    const bool down = anyButtonDown();
+    if (!armed && !down) armed = true;
+    else if (armed && down) { wm.stopConfigPortal(); return false; }
+    delay(10);
+  }
+
+  wm.stopConfigPortal();
+  WiFi.mode(WIFI_STA);   // hotspot off
+  rememberNetwork(WiFi.SSID().c_str(), WiFi.psk().c_str());
+  cacheWifiAp();
+  return true;
+}
+
+
+// ── Retained inbox ────────────────────────────────────────────
 // Wipes the retained copy of our inbox on the broker, so the next wake
 // doesn't get handed the same message again.
 void flushInboxClear() {
@@ -301,67 +404,34 @@ void markInboxRead() {
   flushInboxClear();   // if we're offline, loop() retries once MQTT is back
 }
 
-bool anyButtonDown() {
-  return digitalRead(BTN_LEFT) == LOW || digitalRead(BTN_SELECT) == LOW || digitalRead(BTN_RIGHT) == LOW;
-}
 
-// Never returns — drops the chip into deep sleep, waking on a timer
-// or on a BTN_LEFT / BTN_SELECT press.
-void enterDeepSleep(unsigned long seconds) {
+// ── Sleep ─────────────────────────────────────────────────────
+// Never returns — shows the "Sleeping" screen, then drops the chip into
+// deep sleep until BTN_LEFT / BTN_SELECT is pressed.
+void enterDeepSleep() {
   if (mqttClient.connected()) mqttClient.disconnect();   // flushes anything we just published
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
 
+  netWifiOk = netMqttOk = false;
+  currentState = STATE_SLEEP;
+  fastUpdate   = false;
+  initDisplay();
+  refreshDisplay();
+
   // Put the panel's controller into its own deep sleep. Without this the booster
   // stays powered after a partial refresh and drains the battery the whole night.
-  if (displayAwake) display.hibernate();
+  display.hibernate();
+
+  // Don't go down while a button is still held — ext1 would wake us instantly.
+  const unsigned long heldSince = millis();
+  while (anyButtonDown() && millis() - heldSince < 3000) delay(10);
 
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // keeps the button pull-ups powered during sleep
-
-  esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
   const uint64_t wakeMask = (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT);
   esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_LOW);
 
   esp_deep_sleep_start();
-}
-
-// Runs on a timer wake. Goes straight back to sleep unless someone is
-// waiting for us in a game or a button is being pressed — then it returns
-// with WiFi + MQTT already up and setup() carries on into active mode.
-void timerWakeCheck() {
-  const bool wifiOk = quickWifiConnect();
-  bool mqttOk = false;
-  if (wifiOk && connectMQTT()) {
-    mqttOk = true;
-    const unsigned long start = millis();
-    while (millis() - start < MQTT_LISTEN_WINDOW_MS && !newInboxMessage) {
-      mqttClient.loop();
-      delay(10);
-    }
-    flushInboxClear();
-  }
-  wifiFailStreak = wifiOk ? 0 : min<uint8_t>(wifiFailStreak + 1, 8);
-  netWifiOk = wifiOk;
-  netMqttOk = mqttOk;
-
-  if (TTT_hasOpponent || C4_hasOpponent || anyButtonDown()) return;
-
-  // Radio off before the (slow) e-ink refresh — nothing below needs it.
-  if (mqttClient.connected()) mqttClient.disconnect();
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-
-  const bool battMoved   = abs(batteryPct - shownBattPct) >= BATTERY_REDRAW_STEP;
-  const bool lowFlipped  = (batteryPct <= LOW_BATT_PCT) != (shownBattPct <= LOW_BATT_PCT);
-  const bool netFlipped  = (wifiOk != shownWifiOk) || (mqttOk != shownMqttOk);
-  if (newInboxMessage || battMoved || lowFlipped || netFlipped || shownBattPct < 0) {
-    currentState = wifiOk ? STATE_HOME : STATE_WIFI;
-    fastUpdate   = false;
-    initDisplay();
-    refreshDisplay();
-  }
-
-  enterDeepSleep(currentWakeIntervalS());
 }
 
 bool sleepWouldLoseState() {
@@ -382,15 +452,8 @@ void handlePowerState() {
     if (inConnect4  || C4_pendingStart)  leaveConnect4();
     typedMessage[0] = '\0';
     messageLen      = 0;
-    currentState    = STATE_HOME;
-    needRefresh     = true;
   }
-
-  if (needRefresh) {
-    needRefresh = false;
-    refreshDisplay();
-  }
-  enterDeepSleep(currentWakeIntervalS());
+  enterDeepSleep();
 }
 
 // ── MQTT Callbacks ────────────────────────────────────────────
@@ -491,7 +554,6 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     memcpy(lastReceivedMessage, incoming, msgLen + 1);
     hasUnreadMessage   = true;
     inboxRetainCleared = false;
-    newInboxMessage    = true;
     markActivity();
     if (currentState == STATE_HOME) {
       needRefresh = true;

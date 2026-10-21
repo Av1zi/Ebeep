@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 - **Games** - TicTacToe, Connect 4, and Blackjack, all multiplayer over MQTT
 - **E-Ink display** - 2.9" screen and low power consumption
 - **Battery powered** - LiPo with USB-C charging, percentage always visible
-- **Deep sleep** - wakes on a timer or button press to maximise battery life
+- **Deep sleep** - sleeps until you press a button, so a sleeping device uses almost nothing
 - **Long range** - talks over WiFi/MQTT, so both devices work from anywhere with an internet connection
 
 ---
@@ -50,7 +50,7 @@ https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 Both devices connect to WiFi and talk through a private MQTT broker. Each device subscribes to its own topic and publishes to the other's.
 
 ### WiFi Setup
-On first boot the device creates a hotspot (`Ebeep_1_config` or `Ebeep_2_config`). Connect to it from any phone and a setup page pops up automatically - pick your network, enter the password, done. Credentials are saved to flash and never asked for again unless the connection fails. see walkthrough below:
+When the device wakes up and none of its known networks are in range, it opens a hotspot (`Ebeep_1_config` or `Ebeep_2_config`) and says so on screen. Connect to it from any phone and a setup page pops up automatically - pick your network, enter the password, done. Press the middle button to cancel; the hotspot also closes by itself after 5 minutes. The device remembers up to 5 networks (home, work, phone hotspot...) and picks whichever one is in range, so each place only needs setting up once. see walkthrough below:
 
 https://github.com/user-attachments/assets/75ae72dc-5833-4c83-8c6c-1c9a049145ae
 
@@ -69,7 +69,7 @@ https://github.com/user-attachments/assets/75ae72dc-5833-4c83-8c6c-1c9a049145ae
 - **Blackjack** - single-player, full ruleset with split, double, and a soft-17 dealer
 
 ### Power Management
-The device spends most of its time in deep sleep, waking every 60 seconds to check for messages. Night hours (00:00–08:00) and low battery stretch that to 5 minutes, and with no WiFi around the interval backs off further. Messages are sent as retained MQTT messages, so nothing is lost while the other device sleeps. A wake takes about a second or two: it reconnects to the last known access point without scanning, grabs any waiting message, turns the radio off, and only refreshes the e-ink if something on screen actually changed. A new message is drawn (unread dot) and the device goes straight back to sleep; a button press gives a 3-minute active window. All of these are tunable in `config.h`.
+The device stays in deep sleep with "Sleeping" on the screen and never wakes up on its own. Press the left or middle button to wake it: it reconnects to the last network straight away (no scan), or scans for any other known network, and falls back to the setup hotspot if none are around. It stays awake for 3 minutes after the last button press or message, then goes back to sleep. Messages are sent as retained MQTT messages, so the last message sent while you were asleep is waiting for you when you wake it. Timings are in `config.h`.
 
 ---
 

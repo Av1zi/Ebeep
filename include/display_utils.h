@@ -28,9 +28,6 @@ void drawCenteredText(int16_t cx, int16_t y, const char* text, const GFXfont* fo
 // draw the top part
 void drawStatusBar(int battPct) {
   battPct = constrain(battPct, 0, 100);
-  shownBattPct = battPct;
-  shownWifiOk  = netWifiOk;
-  shownMqttOk  = netMqttOk;
 
   // Title swaps to a warning below LOW_BATT_PCT — same slot, no layout changes needed.
   const char* title = (battPct <= LOW_BATT_PCT) ? "LOW BATT!" : "Ebeep";
