@@ -80,6 +80,8 @@ A custom PCB has been fully designed and routed in KiCad to replace the hand-wir
 > [!WARNING]
 > The PCB has not been fitted or tested against the STL case files in this repo. If you order it, expect to redesign the case (or at least the mounting points) to fit. it is **not** a drop-in replacement yet.
 
+<img width="800" height="646" alt="image" src="https://github.com/user-attachments/assets/c7d6436f-926f-4e3e-8f55-151299118217" />
+
 
 ---
 
