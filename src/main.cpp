@@ -73,8 +73,7 @@ void setup() {
 
   if (!connectWifi()) enterDeepSleep();   // setup cancelled / timed out — press again to retry
   WiFi.setAutoReconnect(true);
-  WiFi.setSleep(WIFI_PS_MAX_MODEM);
-  connectMQTT();
+  connectMQTT();   // turns on modem sleep once the handshake is done
   netWifiOk = (WiFi.status() == WL_CONNECTED);
   netMqttOk = mqttClient.connected();
 
@@ -161,6 +160,13 @@ void loop() {
   }
 
   handlePowerState();
+
+  // Buttons aren't polled while a pass blocks — log it so freezes can be traced.
+  const unsigned long took = millis() - now;
+  if (took > SLOW_LOOP_WARN_MS) {
+    Serial.printf("Slow loop: %lu ms (state %d, wifi %d, mqtt %d)\n",
+                  took, (int)currentState, (int)netWifiOk, (int)netMqttOk);
+  }
 
   delay(10);   // lets the CPU idle between polls; still far quicker than any press
 }

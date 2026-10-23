@@ -198,6 +198,9 @@ bool connectWifi() {
 void setupMqtt() {
   wifiClient.setInsecure();
   wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);
+  // The library default is 120 s, and loop() is stuck for all of it —
+  // no buttons, no redraws. A healthy handshake takes 1-3 s.
+  wifiClient.setHandshakeTimeout(MQTT_HANDSHAKE_TIMEOUT_S);
   mqttClient.setServer(MQTT_SERVER_ADDR, MQTT_SERVER_PORT);
   mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
   mqttClient.setCallback(onMessageReceived);
@@ -211,12 +214,24 @@ bool connectMQTT() {
     snprintf(gamesTopic, sizeof(gamesTopic), "%s/games", BEEPER_ID);
   }
 
-  Serial.print("MQTT connect... ");
-  if (!mqttClient.connect(BEEPER_ID, MQTT_USERNAME_STR, MQTT_PASSWORD_STR)) {
-    Serial.printf("failed rc=%d\n", mqttClient.state());
+  // Radio fully awake for the handshake — in max modem sleep replies can
+  // arrive late or get missed, and the handshake stalls.
+  WiFi.setSleep(WIFI_PS_NONE);
+
+  Serial.printf("MQTT connect (RSSI %d dBm)... ", WiFi.RSSI());
+  const unsigned long start = millis();
+  const bool ok = mqttClient.connect(BEEPER_ID, MQTT_USERNAME_STR, MQTT_PASSWORD_STR);
+  const unsigned long took = millis() - start;
+
+  WiFi.setSleep(WIFI_PS_MAX_MODEM);
+
+  if (!ok) {
+    char err[64];
+    wifiClient.lastError(err, sizeof(err));
+    Serial.printf("failed rc=%d after %lu ms (tls: %s)\n", mqttClient.state(), took, err);
     return false;
   }
-  Serial.println("OK");
+  Serial.printf("OK in %lu ms\n", took);
   mqttClient.subscribe(inboxTopic);   // the retained message (if any) arrives right after this
   mqttClient.subscribe(gamesTopic);
   return true;

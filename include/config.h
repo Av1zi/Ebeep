@@ -105,6 +105,8 @@
 #define WIFI_PORTAL_TIMEOUT_S     300                  // setup hotspot gives up (and sleeps) after this
 #define WIFI_RECONNECT_GRACE_MS   (10UL * 1000)        // WiFi down this long -> "Connecting..." screen
 #define MQTT_RETRY_MS             5000UL
+#define MQTT_HANDSHAKE_TIMEOUT_S  8                    // stalled TLS handshake gives up after this (library default: 120)
+#define SLOW_LOOP_WARN_MS         5000UL               // log any loop() pass that blocks longer than this (a full e-ink refresh is ~3 s)
 #define AP_password HOTSPOT_PASSWORD // AP_password: leave empty to create an open acess point.
 
 // MQTT username matches BEEPER_ID
