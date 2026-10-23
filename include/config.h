@@ -81,6 +81,7 @@
 #define WIFI_CONNECT_TIMEOUT_MS   5000UL               // per known network found in a scan
 #define WIFI_PORTAL_TIMEOUT_S     300                  // setup hotspot gives up (and sleeps) after this
 #define MAX_KNOWN_NETWORKS        5                    // remembered WiFi networks, oldest dropped first
+#define STUCK_BUTTON_RETRY_S      (30ULL * 60)         // both wake buttons read pressed at sleep: timer wake instead
 
 
 // ── Device Identity ───────────────────────────────────────────
@@ -181,6 +182,7 @@ int8_t        heldButton      = 0;   // 0=none, -1=left, +1=right
 // Kept in variables (not read live) so the sleep screen can draw them after the radio is off.
 bool netWifiOk = false;
 bool netMqttOk = false;
+bool batteryEmpty = false;   // last boot browned out — sleep screen asks for a charge
 
 // ── Power state ────────────────────────────────────────────────
 unsigned long lastActivityMillis = 0;   // reset on any button press or message — see PowerState.h markActivity()

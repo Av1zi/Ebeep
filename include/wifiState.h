@@ -28,7 +28,8 @@ void drawPortal() {
 
 void drawSleeping() {
   drawCenteredText(SCREEN_W / 2, CONTENT_Y + 48, "Sleeping", &FreeMonoBold24pt7b);
-  drawCenteredText(SCREEN_W / 2, CONTENT_Y + 76, "press to wake up", &FreeMonoBold9pt7b);
+  drawCenteredText(SCREEN_W / 2, CONTENT_Y + 76,
+                   batteryEmpty ? "battery empty - charge me" : "press to wake up", &FreeMonoBold9pt7b);
   // Only these two are wired as deep-sleep wake pins (BTN_RIGHT isn't an LP GPIO)
   drawButtonHints("Wake", "Wake", "");
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include <esp_sleep.h>
 #include <esp_wifi.h>
+#include <driver/rtc_io.h>
 #include <Preferences.h>
 
 // ═══════════════════════════════════════════════════════════════
@@ -408,29 +409,50 @@ void markInboxRead() {
 // ── Sleep ─────────────────────────────────────────────────────
 // Never returns — shows the "Sleeping" screen, then drops the chip into
 // deep sleep until BTN_LEFT / BTN_SELECT is pressed.
-void enterDeepSleep() {
+void enterDeepSleep(bool drawScreen = true) {
   if (mqttClient.connected()) mqttClient.disconnect();   // flushes anything we just published
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
 
-  netWifiOk = netMqttOk = false;
-  currentState = STATE_SLEEP;
-  fastUpdate   = false;
-  initDisplay();
-  refreshDisplay();
+  if (drawScreen) {
+    netWifiOk = netMqttOk = false;
+    currentState = STATE_SLEEP;
+    fastUpdate   = false;
+    initDisplay();
+    refreshDisplay();
+  }
 
   // Put the panel's controller into its own deep sleep. Without this the booster
   // stays powered after a partial refresh and drains the battery the whole night.
-  display.hibernate();
+  if (displayAwake) display.hibernate();
 
   // Don't go down while a button is still held — ext1 would wake us instantly.
   const unsigned long heldSince = millis();
   while (anyButtonDown() && millis() - heldSince < 3000) delay(10);
 
-  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // keeps the button pull-ups powered during sleep
-  const uint64_t wakeMask = (1ULL << BTN_LEFT) | (1ULL << BTN_SELECT);
-  esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_LOW);
+  // ext1 hands the wake pins over to the low-power IO block, which has its
+  // OWN pull-up bit — the one pinMode(INPUT_PULLUP) set doesn't carry over.
+  // Without these the pins float in deep sleep, pick up noise and wake the
+  // device again almost immediately (connect, refresh, sleep, repeat).
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); // powers those pull-ups during sleep
+  uint64_t wakeMask = 0;
+  for (const gpio_num_t pin : { (gpio_num_t)BTN_LEFT, (gpio_num_t)BTN_SELECT }) {
+    // A pin that's still low here (stuck / shorted switch) would wake us on the
+    // spot, forever — leave it out and rely on the other one.
+    if (digitalRead(pin) == LOW) continue;
+    rtc_gpio_pullup_en(pin);
+    rtc_gpio_pulldown_dis(pin);
+    wakeMask |= (1ULL << pin);
+  }
+  if (wakeMask) {
+    esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_LOW);
+  } else {
+    // Both wake buttons read pressed — check back later rather than never waking.
+    esp_sleep_enable_timer_wakeup(STUCK_BUTTON_RETRY_S * 1000000ULL);
+  }
 
+  Serial.printf("Sleeping (wake mask 0x%llx)\n", wakeMask);
+  Serial.flush();
   esp_deep_sleep_start();
 }
 

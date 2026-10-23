@@ -102,6 +102,22 @@ void setup() {
   wifiClient.setTimeout(WIFI_CONNECT_TIMEOUT_MS);
   mqttClient.setSocketTimeout(WIFI_CONNECT_TIMEOUT_MS / 1000);
 
+  const esp_reset_reason_t resetReason = esp_reset_reason();
+  const esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+  Serial.printf("Reset reason %d, wake cause %d, ext1 pins 0x%llx\n",
+                (int)resetReason, (int)wakeCause, esp_sleep_get_ext1_wakeup_status());
+
+  // Only used when both wake buttons read stuck-pressed at sleep time —
+  // just re-check them, no reason to bring the radio up.
+  if (wakeCause == ESP_SLEEP_WAKEUP_TIMER) enterDeepSleep(false);
+
+  // The battery couldn't hold up the WiFi radio last time. Trying again would
+  // just brown out again in a loop — say so and wait for a charge.
+  if (resetReason == ESP_RST_BROWNOUT) {
+    batteryEmpty = true;
+    enterDeepSleep();
+  }
+
   loadKnownNetworks();
   initDisplay();
 
