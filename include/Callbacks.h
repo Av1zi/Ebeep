@@ -101,7 +101,7 @@ bool displayAwake = false;   // display.init() has run since this boot
 
 void initDisplay() {
   if (displayAwake) return;
-  display.init(115200, true, 50, false);
+  display.init(0, true, 50, false);   // 0 = no GxEPD2 timing prints on every refresh
   display.setRotation(3);
   displayAwake = true;
 }

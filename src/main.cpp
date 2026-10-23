@@ -35,6 +35,10 @@
 // ═══════════════════════════════════════════════════════════════
 void setup() {
   Serial.begin(115200);   // no wait for the monitor — that cost 2 s per wake
+  // Plugged into a PC with no monitor open, nothing drains the USB serial
+  // buffer and every print waited up to 2 s — the beeper froze for a minute.
+  // Drop the output instead.
+  Serial.setTxTimeoutMs(0);
 
   pinMode(EPD_CS,     OUTPUT);
   pinMode(EPD_DC,     OUTPUT);
