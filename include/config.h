@@ -68,19 +68,16 @@
 #define BATTERY_EMA_ALPHA         0.15f
 
 // ── Power Management ──────────────────────────────────────────
-//   Asleep : deep sleep with "Sleeping" on screen, no timer wake at all.
+//   Asleep : deep sleep with "Sleeping" on screen, no timer wake.
 //            BTN_LEFT / BTN_SELECT wakes it up and it connects.
-//   Active : awake, WiFi modem-sleep, for ACTIVE_TIMEOUT_MS after the last press.
-//   Messages are published retained, so the last one sent while we slept
-//   is waiting on the broker when we wake.
-#define ACTIVE_TIMEOUT_MS         (3UL * 60 * 1000)    // stay awake this long after a button press
-#define IDLE_HARD_TIMEOUT_MS      (15UL * 60 * 1000)   // mid-game / mid-draft: give up and sleep after this
+//   Awake  : for ACTIVE_TIMEOUT_MS after the last press or message —
+//            or as long as you're typing / in a game (see Power.h).
+//   Messages are published retained, so the last one sent while we
+//   slept is waiting on the broker when we wake.
+#define ACTIVE_TIMEOUT_MS         (3UL * 60 * 1000)    // left alone this long -> sleep
+#define BUSY_IDLE_TIMEOUT_MS      (15UL * 60 * 1000)   // typing / in a game but untouched this long -> sleep anyway
 #define STATUS_REFRESH_MS         (2UL * 60 * 1000)    // battery-only partial refresh cadence
 #define LOW_BATT_PCT              10                   // below this: status bar warning
-#define WIFI_FAST_CONNECT_MS      2500UL               // reconnect to last network (no scan)
-#define WIFI_CONNECT_TIMEOUT_MS   5000UL               // per known network found in a scan
-#define WIFI_PORTAL_TIMEOUT_S     300                  // setup hotspot gives up (and sleeps) after this
-#define MAX_KNOWN_NETWORKS        5                    // remembered WiFi networks, oldest dropped first
 #define STUCK_BUTTON_RETRY_S      (30ULL * 60)         // both wake buttons read pressed at sleep: timer wake instead
 
 
@@ -102,7 +99,12 @@
 
 // ── WiFi / MQTT ───────────────────────────────────────────────
 // most of these are defined in a diffrent file (secret.h), to keep them out of git.
-#define WIFI_RECONNECT_GRACE_MS   (10UL * 1000)
+#define MAX_KNOWN_NETWORKS        5                    // remembered WiFi networks, oldest dropped first
+#define WIFI_FAST_CONNECT_MS      2500UL               // reconnect to the last network (no scan)
+#define WIFI_CONNECT_TIMEOUT_MS   5000UL               // per remembered network found in a scan
+#define WIFI_PORTAL_TIMEOUT_S     300                  // setup hotspot gives up (and sleeps) after this
+#define WIFI_RECONNECT_GRACE_MS   (10UL * 1000)        // WiFi down this long -> "Connecting..." screen
+#define MQTT_RETRY_MS             5000UL
 #define AP_password HOTSPOT_PASSWORD // AP_password: leave empty to create an open acess point.
 
 // MQTT username matches BEEPER_ID
@@ -113,8 +115,7 @@ constexpr const char* MQTT_USERNAME_STR = BEEPER_ID;
 constexpr const char* MQTT_PASSWORD_STR = MQTT_PASSWORD;
 
 
-// Defined in main.cpp but declared here so PowerState.h can call them
-bool connectMQTT();
+// Defined in Callbacks.h, declared here so the state screens can call it
 void markInboxRead();
 
 
@@ -182,7 +183,7 @@ int8_t        heldButton      = 0;   // 0=none, -1=left, +1=right
 // Kept in variables (not read live) so the sleep screen can draw them after the radio is off.
 bool netWifiOk = false;
 bool netMqttOk = false;
-bool batteryEmpty = false;   // last boot browned out — sleep screen asks for a charge
 
 // ── Power state ────────────────────────────────────────────────
-unsigned long lastActivityMillis = 0;   // reset on any button press or message — see PowerState.h markActivity()
+unsigned long lastActivityMillis = 0;       // reset on any button press or message — see markActivity()
+bool          batteryEmpty       = false;   // last boot browned out — sleep screen asks for a charge

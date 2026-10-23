@@ -69,7 +69,7 @@ https://github.com/user-attachments/assets/75ae72dc-5833-4c83-8c6c-1c9a049145ae
 - **Blackjack** - single-player, full ruleset with split, double, and a soft-17 dealer
 
 ### Power Management
-The device stays in deep sleep with "Sleeping" on the screen and never wakes up on its own. Press the left or middle button to wake it: it reconnects to the last network straight away (no scan), or scans for any other known network, and falls back to the setup hotspot if none are around. It stays awake for 3 minutes after the last button press or message, then goes back to sleep. Messages are sent as retained MQTT messages, so the last message sent while you were asleep is waiting for you when you wake it. Timings are in `config.h`.
+The device stays in deep sleep with "Sleeping" on the screen and never wakes up on its own. Press the left or middle button to wake it: it reconnects to the last network straight away (no scan), or scans for any other known network, and falls back to the setup hotspot if none are around. It stays awake for 3 minutes after the last button press or message, and never sleeps while you are writing a message or in a game (unless it is left untouched for 15 minutes), then goes back to sleep. Messages are sent as retained MQTT messages, so the last message sent while you were asleep is waiting for you when you wake it. Timings are in `config.h`.
 
 ---
 
