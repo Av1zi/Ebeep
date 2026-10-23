@@ -148,7 +148,9 @@ void loop() {
     updateBattery();
   }
 
-  if (currentState == STATE_SENT && now - sentEnteredAt >= SENT_DISPLAY_MS) {
+  // millis(), not `now`: sentEnteredAt can be set after `now` was taken (by the
+  // checkButtons() above), and `now - sentEnteredAt` would then wrap to a huge value.
+  if (currentState == STATE_SENT && millis() - sentEnteredAt >= SENT_DISPLAY_MS) {
     currentState = STATE_HOME;
     needRefresh  = true;
     fastUpdate   = false;
