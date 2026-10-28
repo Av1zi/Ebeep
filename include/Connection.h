@@ -41,6 +41,11 @@ void loadKnownNetworks() {
     wifiPrefs.getString(key, knownNets[i].pass, sizeof(knownNets[i].pass));
   }
   wifiPrefs.end();
+
+  Serial.printf("Known WiFi: %u\n", knownCount);
+  for (uint8_t i = 0; i < knownCount; i++) {
+    Serial.printf("  %u: '%s' (pass len %u)\n", i, knownNets[i].ssid, (unsigned)strlen(knownNets[i].pass));
+  }
 }
 
 void storeKnownNetworks() {
@@ -80,25 +85,34 @@ void rememberNetwork(const char* ssid, const char* pass) {
   strlcpy(knownNets[0].ssid, ssid, sizeof(knownNets[0].ssid));
   strlcpy(knownNets[0].pass, pass, sizeof(knownNets[0].pass));
   storeKnownNetworks();
+  Serial.printf("Remembered '%s' (pass len %u, %u known)\n",
+                knownNets[0].ssid, (unsigned)strlen(knownNets[0].pass), knownCount);
 }
 
 // The firmware before the network list relied on WiFiManager's single saved
-// network — pick that up once so nobody has to go through setup again.
+// network — pick that up so nobody has to go through setup again. Also acts as
+// a safety net: whatever the setup hotspot saved into the driver is imported if
+// our own list never got it (e.g. a reboot between connect and save).
 void importLegacyNetwork() {
-  if (knownCount > 0) return;
   wifi_config_t conf;
   if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK || conf.sta.ssid[0] == '\0') return;
   char ssid[33] = {0}, pass[65] = {0};
   memcpy(ssid, conf.sta.ssid,     sizeof(conf.sta.ssid));
   memcpy(pass, conf.sta.password, sizeof(conf.sta.password));
+  if (findKnown(ssid)) return;   // our list already has it — never overwrite a known password
   rememberNetwork(ssid, pass);
 }
 
 
 // ── Connecting ────────────────────────────────────────────────
 void cacheCurrentAp() {
+  // Right after the setup hotspot closes, or after a drop, the station can be
+  // in-between: SSID() is then empty and BSSID() is NULL. Never cache that.
+  if (WiFi.status() != WL_CONNECTED) { cachedChannel = 0; return; }
   strlcpy(cachedSsid, WiFi.SSID().c_str(), sizeof(cachedSsid));
-  memcpy(cachedBssid, WiFi.BSSID(), sizeof(cachedBssid));
+  if (cachedSsid[0] == '\0') { cachedChannel = 0; return; }
+  const uint8_t* bssid = WiFi.BSSID();
+  if (bssid) memcpy(cachedBssid, bssid, sizeof(cachedBssid));
   cachedChannel = WiFi.channel();
 }
 
@@ -150,6 +164,12 @@ bool runWifiPortal() {
 
   wm.setConfigPortalBlocking(false);
   wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT_S);
+
+  // WiFiManager saves the new credentials through the WiFi driver, so let the
+  // driver keep them in flash. With RAM storage the only copy lived in the
+  // driver's RAM config, which the AP -> STA switch below can throw away.
+  esp_wifi_set_storage(WIFI_STORAGE_FLASH);
+
   if (sizeof(HOTSPOT_PASSWORD) > 1) wm.startConfigPortal(AP_NAME, AP_password);
   else                              wm.startConfigPortal(AP_NAME);
 
@@ -163,9 +183,27 @@ bool runWifiPortal() {
     delay(10);
   }
 
+  // Read the credentials back from the driver's saved config while the portal
+  // is still up. WiFi.SSID() only works while we are actually associated and
+  // is often already empty during the AP -> STA switch below, which used to
+  // make rememberNetwork() return without saving anything.
+  String newSsid = wm.getWiFiSSID(true);
+  String newPass = wm.getWiFiPass();
+  if (newSsid.isEmpty()) newSsid = WiFi.SSID();
+  if (newPass.isEmpty()) newPass = WiFi.psk();
+
+  if (!newSsid.isEmpty()) rememberNetwork(newSsid.c_str(), newPass.c_str());
+  else Serial.println("Portal connected but the SSID could not be read - nothing saved");
+
   wm.stopConfigPortal();
-  WiFi.mode(WIFI_STA);   // hotspot off
-  rememberNetwork(WiFi.SSID().c_str(), WiFi.psk().c_str());
+  WiFi.mode(WIFI_STA);              // hotspot off
+  esp_wifi_set_storage(WIFI_STORAGE_RAM);
+
+  // The mode switch can drop the link for a moment — give the driver a chance
+  // to come back before caching an AP. connectWifi() keeps reporting success
+  // either way, since the credentials are saved for the next attempt.
+  if (waitForWifi(WIFI_CONNECT_TIMEOUT_MS)) cacheCurrentAp();
+  else                                      cachedChannel = 0;
   return true;
 }
 
