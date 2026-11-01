@@ -13,7 +13,9 @@ Two handheld wireless devices that can message each other and play games, built 
 ## Project Showcase
 
 ### 3D render
-https://github.com/user-attachments/assets/a6d2f698-0696-4dca-adf1-06d3810ce39c
+
+https://github.com/user-attachments/assets/e5b205ba-0493-49c5-be56-bcfee51162cf
+
 
 ### Walkthrough
 https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
