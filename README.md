@@ -96,7 +96,7 @@ I used the printer default settings, with tree supports. I have a multi-nozzle p
 <img width="2400" height="2400" alt="Ebeep wiring diagram" src="https://github.com/user-attachments/assets/5c826736-3398-4f3e-a769-e0afdf25947a" />
 
 ### Building Instructions
-1. 3D print the files from the `CAD` folder
+1. 3D print the files from the `CAD\STL` folder
 2. Solder everything onto the perfboard following the electrical diagram above
 3. Flash the code (see **Setting Up the Code** below) and test before closing the case
 4. Fit the components into the case and put double-sided tape under the battery to hold it
