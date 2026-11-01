@@ -51,7 +51,7 @@ https://github.com/user-attachments/assets/030f00d7-5b2a-4592-a6ae-74eca7de7010
 Both devices connect to WiFi and talk through an MQTT broker (I used the free HiveMQ Cloud tier). Each device listens on its own topic and publishes to the other one's.
 
 ### WiFi Setup
-When the device wakes up and none of its known networks are in range, it opens a hotspot (`Ebeep_1_config` or `Ebeep_2_config`). Connect to it from any phone/pc and a setup page pops up automatically, there you will have to enter the wifi details and press done. (to save battery the hotspot will closes by itself after 5 minutes) The device remembers up to 5 networks and picks whichever one is in range.
+When the device wakes up and none of its known networks are in range, it opens a hotspot (`Ebeep_1_config` or `Ebeep_2_config`). Connect to it from any phone/pc and a setup page pops up automatically, there you will have to enter the wifi details and press done. (to save battery the hotspot will close by itself after 5 minutes) The device remembers up to 5 networks and picks whichever one is in range.
 
 Walkthrough:
 
@@ -96,7 +96,7 @@ I used the printer default settings, with tree supports. I have a multi-nozzle p
 <img width="2400" height="2400" alt="Ebeep wiring diagram" src="https://github.com/user-attachments/assets/5c826736-3398-4f3e-a769-e0afdf25947a" />
 
 ### Building Instructions
-1. 3D print the files from the `CAD\STL` folder
+1. 3D print the files from the `CAD/STL` folder
 2. Solder everything onto the perfboard following the electrical diagram above
 3. Flash the code (see **Setting Up the Code** below) and test before closing the case
 4. Fit the components into the case and put double-sided tape under the battery to hold it
